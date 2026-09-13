@@ -1,0 +1,8 @@
+node_modules/
+auth_info_baileys/
+database.json
+temp_media
+temp_sticker.webp
+temp_video.mp4
+temp_frame.jpg
+*.log
