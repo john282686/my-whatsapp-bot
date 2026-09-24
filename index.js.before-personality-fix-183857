@@ -1,0 +1,952 @@
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, getContentType, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const fs = require('fs');
+const { franc } = require('franc');
+const axios = require('axios');
+
+const PREFIX = '.';
+const PHONE_NUMBER = '233206391674';
+
+// ============ KEY POOLS ============
+const KEY_POOL = {
+    cohere: [
+        "HfMGRCKMGIPxQG4N9HkFDtPlIC3CgRtYTEIcahL0"
+    ],
+    mistral: [
+        "E9aM3y19VUURljIOMJcAED157M9BNZPY"
+    ],
+    cerebras: [
+        "csk-52h4rk6ydh4v56686639tjceew8fxdkf86hnftj4hrtyrhm8",
+        "csk-5vcm33dy8j22h6nvctdh955nrjfw3r9ywvdht56vd2h3h9tj",
+        "csk-vrh9ejk64x3ew543j9fmt3e2p9994hj6rndyyxfk8dpne2k8",
+        "csk-nk93epc52xwcdydrfyp9mtt5xxcvrp9tvhy9nkh4cv5995ft"
+    ],
+    groq: []
+};
+
+var keyCooldown = {};
+
+function getNextKey(provider) {
+    var keys = KEY_POOL[provider];
+    if (!keys || keys.length === 0) return null;
+    var now = Date.now();
+    for (var i = 0; i < keys.length; i++) {
+        var keyId = provider + ":" + i;
+        if (!keyCooldown[keyId] || keyCooldown[keyId] < now) {
+            return { key: keys[i], index: i };
+        }
+    }
+    return null;
+}
+
+function markKeyFailed(provider, index) {
+    var now = Date.now();
+    keyCooldown[provider + ":" + index] = now + (24 * 60 * 60 * 1000);
+    console.log('[KEY] ' + provider + ' key#' + index + ' cooling 24h');
+}
+
+function markKeyOk(provider, index) {
+    delete keyCooldown[provider + ":" + index];
+}
+
+// ============ DB ============
+var advanced = require('./advanced_features');
+var aiFeatures = require('./ai_features');
+var smartPersonality = require('./smart_personality');
+var memberProfiles = require('./member_profiles');
+var loreEngine = require('./lore_engine');
+var db = { warnings:{}, welcomeSettings:{}, protectedGroups:{}, xp:{}, afk:{}, autoReply:{}, memory:{}, chatHistory:{} };
+try { if (fs.existsSync('./database.json')) db = Object.assign(db, JSON.parse(fs.readFileSync('./database.json'))); } catch(e) {}
+
+function rememberChat(groupId, senderId, senderName, role, text) {
+    try {
+        if (!db.chatHistory) db.chatHistory = {};
+        if (!db.chatHistory[groupId]) db.chatHistory[groupId] = {};
+        if (!db.chatHistory[groupId][senderId]) {
+            db.chatHistory[groupId][senderId] = {
+                name: senderName || '',
+                messages: []
+            };
+        }
+
+        var h = db.chatHistory[groupId][senderId];
+
+        if (senderName) h.name = senderName;
+
+        if (!Array.isArray(h.messages)) h.messages = [];
+
+        if (text) {
+            h.messages.push({
+                role: role,
+                text: String(text).slice(0, 1000),
+                time: Date.now()
+            });
+        }
+
+        // Keep the latest 20 messages for each person.
+        if (h.messages.length > 20) {
+            h.messages = h.messages.slice(-20);
+        }
+
+        saveDB();
+    } catch(e) {}
+}
+
+function getChatHistory(groupId, senderId) {
+    try {
+        var h = db.chatHistory &&
+                db.chatHistory[groupId] &&
+                db.chatHistory[groupId][senderId];
+
+        if (!h || !Array.isArray(h.messages)) return '';
+
+        return h.messages.map(function(x) {
+            return (x.role === 'user' ? 'Person' : 'You') + ': ' + x.text;
+        }).join('\n');
+    } catch(e) {
+        return '';
+    }
+}
+
+advanced.ensure(db);
+memberProfiles.ensure(db);
+function saveDB() { fs.writeFileSync('./database.json', JSON.stringify(db, null, 2)); }
+
+// ================= GROUP BRAIN =================
+
+function groupBrain(g){
+    if(!db.groupChat) db.groupChat={};
+    if(!db.groupChat[g]) db.groupChat[g]=[];
+    return db.groupChat[g];
+}
+
+function addGroupMessage(g,name,text){
+    try{
+        if(!g || !text || text.length<1) return;
+
+        var arr=groupBrain(g);
+
+        arr.push({
+            name:String(name||'Member').substring(0,80),
+            text:String(text).substring(0,500),
+            time:Date.now()
+        });
+
+        // Keep only the latest 80 messages
+        while(arr.length>80) arr.shift();
+
+        saveDB();
+    }catch(e){
+        console.log('[GROUP BRAIN]',e.message);
+    }
+}
+
+function recentGroupContext(g,limit){
+    var arr=groupBrain(g);
+    if(!arr || !arr.length) return '';
+
+    limit=limit||30;
+
+    return arr.slice(-limit).map(function(x){
+        return x.name+': '+x.text;
+    }).join('\n');
+}
+
+function groupLore(g){
+    if(!db.groupLore) db.groupLore={};
+    if(!db.groupLore[g]) db.groupLore[g]=[];
+    return db.groupLore[g];
+}
+
+function addGroupLore(g,text,type){
+    try{
+        if(!text || text.length<4) return;
+
+        var arr=groupLore(g);
+
+        arr.push({
+            type:type||'moment',
+            text:String(text).substring(0,500),
+            time:Date.now()
+        });
+
+        while(arr.length>50) arr.shift();
+
+        saveDB();
+    }catch(e){
+        console.log('[GROUP LORE]',e.message);
+    }
+}
+
+function loreContext(g){
+    var arr=groupLore(g);
+    if(!arr || !arr.length) return '';
+
+    return arr.slice(-10).map(function(x){
+        return '['+(x.type||'moment')+'] '+x.text;
+    }).join(' | ');
+}
+
+async function scanGroupLore(g){
+    try{
+        if(!g || !g.endsWith('@g.us')) return;
+
+        var arr=groupBrain(g);
+
+        // Need enough conversation before asking AI to extract lore.
+        if(!arr || arr.length<25) return;
+
+        // Scan only once every 30 minutes per group.
+        if(!db.loreScan) db.loreScan={};
+
+        var last=db.loreScan[g]||0;
+
+        if(Date.now()-last < 30*60*1000) return;
+
+        db.loreScan[g]=Date.now();
+        saveDB();
+
+        var conversation=recentGroupContext(g,35);
+
+        var memories=await loreEngine.extract(askAI,conversation);
+
+        if(!memories || !memories.length) return;
+
+        memories.forEach(function(x){
+            addGroupLore(g,x.text,x.type);
+        });
+
+        console.log('[LORE] Saved '+memories.length+' group memories');
+
+    }catch(e){
+        console.log('[LORE SCAN]',e.message);
+    }
+}
+
+
+
+// ============ LINK DETECTOR ============
+function hasLink(text) {
+    if (!text) return false;
+    var t = String(text).toLowerCase();
+    if (t.includes('http://') || t.includes('https://') || t.includes('www.')) return true;
+    var exts = ['com','net','org','io','co','me','tv','xyz','top','online','site','app','dev','ai','info','biz','link','click','ng','gh','ke','za','uk','us','ru','in','tk','ml','ga','cf','gq','club','live','shop','tech','store','space','cloud','info'];
+    for (var i=0;i<exts.length;i++) if (t.includes('.' + exts[i])) return true;
+    return false;
+}
+
+// ============ AI PROVIDERS ============
+async function askCohere(q, sp) {
+    var attempts = (KEY_POOL.cohere || []).length;
+    while (attempts-- > 0) {
+        var kp = getNextKey('cohere'); if (!kp) return null;
+        try {
+            var m = []; if(sp) m.push({role:'system',content:sp}); m.push({role:'user',content:q});
+            var r = await fetch('https://api.cohere.com/v2/chat', {method:'POST', headers:{'Authorization':'Bearer '+kp.key, 'Content-Type':'application/json'}, body: JSON.stringify({model:'command-r-08-2024', messages:m, max_tokens:300})});
+            var d = await r.json();
+            if (d.message && d.message.content && d.message.content[0] && d.message.content[0].text) { markKeyOk('cohere', kp.index); return d.message.content[0].text; }
+            if (d.error && (d.error.type === 'rate_limited' || d.error.code === 'rate_limited')) { markKeyFailed('cohere', kp.index); continue; }
+            if (d.error) { console.log('[Cohere]', JSON.stringify(d.error).substring(0,80)); continue; }
+        } catch(e){ console.log('[Cohere] err:', e.message); }
+    }
+    return null;
+}
+
+async function askMistral(q, sp) {
+    var attempts = (KEY_POOL.mistral || []).length;
+    while (attempts-- > 0) {
+        var kp = getNextKey('mistral'); if (!kp) return null;
+        try {
+            var m = []; if(sp) m.push({role:'system',content:sp}); m.push({role:'user',content:q});
+            var r = await fetch('https://api.mistral.ai/v1/chat/completions', {method:'POST', headers:{'Authorization':'Bearer '+kp.key, 'Content-Type':'application/json'}, body: JSON.stringify({model:'mistral-small-latest', messages:m, max_tokens:300, temperature:0.9})});
+            var d = await r.json();
+            if (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) { markKeyOk('mistral', kp.index); return d.choices[0].message.content; }
+            if (d.error && (d.error.code === '1300' || d.error.type === 'rate_limited')) { markKeyFailed('mistral', kp.index); continue; }
+            if (d.error) { console.log('[Mistral]', JSON.stringify(d.error).substring(0,80)); continue; }
+        } catch(e){ console.log('[Mistral] err:', e.message); }
+    }
+    return null;
+}
+
+async function askCerebras(q, sp) {
+    var models = ['llama-3.3-70b', 'qwen-3-32b', 'gpt-oss-120b', 'llama3.1-8b', 'llama-3.1-70b'];
+    var attempts = (KEY_POOL.cerebras || []).length;
+    while (attempts-- > 0) {
+        var kp = getNextKey('cerebras'); if (!kp) return null;
+        for (var mi = 0; mi < models.length; mi++) {
+            try {
+                var m = []; if(sp) m.push({role:'system',content:sp}); m.push({role:'user',content:q});
+                var r = await fetch('https://api.cerebras.ai/v1/chat/completions', {method:'POST', headers:{'Authorization':'Bearer '+kp.key, 'Content-Type':'application/json'}, body: JSON.stringify({model: models[mi], messages:m, max_tokens:300, temperature:0.9})});
+                var d = await r.json();
+                if (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                    console.log('[Cerebras] key#' + kp.index + ' model: ' + models[mi]);
+                    markKeyOk('cerebras', kp.index);
+                    return d.choices[0].message.content;
+                }
+                if (d.error && d.error.type === 'not_found_error') { continue; }
+                if (d.error) { console.log('[Cerebras]', JSON.stringify(d.error).substring(0,80)); break; }
+            } catch(e){ console.log('[Cerebras] err:', e.message); }
+        }
+        markKeyFailed('cerebras', kp.index);
+    }
+    return null;
+}
+
+async function askGroq(q, sp) {
+    var attempts = (KEY_POOL.groq || []).length;
+    while (attempts-- > 0) {
+        var kp = getNextKey('groq'); if (!kp) return null;
+        try {
+            var m = []; if(sp) m.push({role:'system',content:sp}); m.push({role:'user',content:q});
+            var r = await fetch('https://api.groq.com/openai/v1/chat/completions', {method:'POST', headers:{'Authorization':'Bearer '+kp.key, 'Content-Type':'application/json'}, body: JSON.stringify({model:'openai/gpt-oss-120b', messages:m, max_tokens:300, temperature:0.9})});
+            var d = await r.json();
+            if (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) { markKeyOk('groq', kp.index); return d.choices[0].message.content; }
+            if (d.error) { console.log('[Groq] key#' + kp.index + ':', JSON.stringify(d.error).substring(0,120)); markKeyFailed('groq', kp.index); continue; }
+        } catch(e){ console.log('[Groq] err:', e.message); }
+    }
+    return null;
+}
+
+
+async function isNSFW(buffer, mimeType) {
+    var VETTLY_KEY = "vettly_live_SX5c4E2ZO1d5yELQiSQHscGcObj9dRCG";
+    
+    // Provider 1: Vettly
+    try {
+        console.log('[NSFW] Trying Vettly...');
+        var fd = new FormData();
+        var blob = new Blob([buffer], { type: mimeType || 'image/jpeg' });
+        fd.append('file', blob, 'image.jpg');
+        fd.append('image', blob, 'image.jpg');
+        var r = await fetch('https://api.vettly.dev/v1/moderate', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + VETTLY_KEY },
+            body: fd
+        });
+        var txt = await r.text();
+        console.log('[NSFW] Vettly response:', txt.substring(0, 200));
+        var d; try { d = JSON.parse(txt); } catch(e){ d = null; }
+        if (d) {
+            if (d.nsfw === true || d.flagged === true || d.is_nsfw === true || d.label === 'nsfw' || d.result === 'nsfw') {
+                console.log('[NSFW] Vettly: BLOCKED');
+                return true;
+            }
+            if (d.categories) {
+                if ((d.categories.porn && d.categories.porn > 0.5) ||
+                    (d.categories.nudity && d.categories.nudity > 0.5) ||
+                    (d.categories.sexual && d.categories.sexual > 0.5) ||
+                    (d.categories.hentai && d.categories.hentai > 0.5) ||
+                    (d.categories.explicit && d.categories.explicit > 0.5)) {
+                    console.log('[NSFW] Vettly categories: BLOCKED');
+                    return true;
+                }
+            }
+            if (d.scores) {
+                if ((d.scores.nsfw && d.scores.nsfw > 0.5) ||
+                    (d.scores.porn && d.scores.porn > 0.5)) {
+                    console.log('[NSFW] Vettly scores: BLOCKED');
+                    return true;
+                }
+            }
+            console.log('[NSFW] Vettly: SAFE');
+            return false;
+        }
+    } catch(e) { console.log('[NSFW] Vettly err:', e.message); }
+    
+    // Provider 2: Sightengine fallback
+    try {
+        console.log('[NSFW] Vettly failed, trying Sightengine...');
+        var formData = new FormData();
+        var blob2 = new Blob([buffer], { type: mimeType || 'image/jpeg' });
+        formData.append('media', blob2, 'media');
+        formData.append('models', 'nudity-2.1');
+        formData.append('api_user', SE_USER);
+        formData.append('api_secret', SE_SECRET);
+        var r2 = await fetch('https://api.sightengine.com/1.0/check.json', { method: 'POST', body: formData });
+        var d2 = await r2.json();
+        if (d2.status === 'failure') { console.log('[NSFW] Sightengine limit reached'); return false; }
+        if (d2.nudity) {
+            if (d2.nudity.sexual_activity > 0.5 || d2.nudity.sexual_display > 0.5 || d2.nudity.erotica > 0.5 || d2.nudity.very_suggestive > 0.6 || d2.nudity.raw > 0.5 || d2.nudity.partial > 0.5) {
+                console.log('[NSFW] Sightengine: BLOCKED');
+                return true;
+            }
+        }
+        console.log('[NSFW] Sightengine: SAFE');
+        return false;
+    } catch(e) { console.log('[NSFW] Sightengine err:', e.message); }
+
+    console.log('[NSFW] All scanners failed - treating as safe');
+    return false;
+}
+
+async function askAI(q, opts) {
+    opts = opts || {};
+    var sp = opts.systemPrompt || '' + '\n\nIMPORTANT CONVERSATION RULES:\n- Read the recent conversation before replying.\n- Do NOT repeat a question you already asked this person.\n- Do NOT repeat an answer or use nearly identical wording.\n- If the person already answered a question, remember that answer and move the conversation forward.\n- Do NOT restart the conversation as if you just met them.\n- Respond directly to what the person just said.\n- If the person complains that you keep repeating yourself, acknowledge it naturally and change the conversation.\n- Vary your wording, questions, reactions and sentence length naturally.\n';
+    
+    // Add random personality hint for variety
+    var moods = [
+        "You are feeling cheerful and playful today.",
+        "You are feeling a bit sassy and bold today.",
+        "You are feeling chill and laid back today.",
+        "You are feeling shy and sweet today.",
+        "You are feeling energetic and excited today.",
+        "You are feeling a bit moody today.",
+        "You are feeling flirty and fun today.",
+        "You are feeling curious and chatty today."
+    ];
+    var randomMood = moods[Math.floor(Math.random() * moods.length)];
+    sp = randomMood + ' ' + sp;
+    var m = [];
+    if(sp) m.push({role:'system',content:sp});
+    m.push({role:'user',content:q});
+    
+    // Puter API - local bridge, no key needed, unlimited
+    var models = ['gpt-4o-mini', 'gpt-4o', 'claude-3-5-sonnet'];
+    for (var i = 0; i < models.length; i++) {
+        try {
+            console.log('[AI] Trying Puter with ' + models[i] + '...');
+            var r = await fetch('http://127.0.0.1:8741/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: models[i], messages: m, max_tokens: 400, temperature: 1.0 })
+            });
+            var d = await r.json();
+            if (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                console.log('[AI] Puter OK (' + models[i] + ')');
+                return d.choices[0].message.content;
+            }
+            if (d.error) console.log('[AI] Puter ' + models[i] + ' error:', JSON.stringify(d.error).substring(0,100));
+        } catch(e) {
+            console.log('[AI] Puter err:', e.message);
+        }
+    }
+    console.log('[AI] All Puter models failed');
+    return null;
+}
+
+// ============ HELPERS ============
+function num(j) { if(!j) return ''; return j.split(':')[0].split('@')[0].replace(/\D/g,''); }
+function isAdmin(m,s,sn,bn,bl,fm){ if(fm||sn===PHONE_NUMBER||sn===bn||(bl&&sn===bl))return true; return m.participants.some(function(p){if(!p.admin)return false; var n=num(p.id); return n===sn||n===bn||(bl&&n===bl)||n===PHONE_NUMBER;}); }
+function isBotAdmin(m,bn,bl){ return m.participants.some(function(p){if(!p.admin)return false; var n=num(p.id); return n===bn||(bl&&n===bl);}); }
+var cache = {};
+async function getMeta(s,j){ var n=Date.now(); if(cache[j]&&n-cache[j].t<300000)return cache[j].d; var d=await s.groupMetadata(j); cache[j]={d:d,t:n}; return d; }
+async function delWarn(s,f,msg,sender,r){
+ try{
+  await s.sendMessage(f,{delete:msg.key});
+  console.log('[DELETE SUCCESS]',f,msg.key.id);
+ }catch(e){
+  console.log('[DELETE FAILED]',e.message);
+  return;
+ }
+
+ setTimeout(function(){
+  try{
+   s.sendMessage(f,{
+    text:'Removed @'+sender.split('@')[0]+': '+r,
+    mentions:[sender]
+   }).catch(function(e){
+    console.log('[WARNING FAILED]',e.message);
+   });
+  }catch(e){
+   console.log('[WARNING ERROR]',e.message);
+  }
+ },200);
+}
+
+var PIDGIN = ['abeg','wetin','dey','sabi','wahala','oya','na so','how far','no wahala','sha','abi','shey','you dey','i dey','una','jare','chale','no vex','wetin happen','wetin be','who dey','shey you','oya now','gist'];
+function isPidgin(t){ if(!t) return false; var l=' '+t.toLowerCase()+' '; return PIDGIN.some(function(w){return l.includes(' '+w+' ');}); }
+
+function mem(g,u){
+    if(!db.memory[g]) db.memory[g] = {};
+    if(!db.memory[g][u]) db.memory[g][u] = { name:null, count:0, recent:[], summaries:[], firstSeen:Date.now(), lastSeen:Date.now() };
+    return db.memory[g][u];
+}
+
+async function addMem(g,u,n,t){
+    try {
+        var m = mem(g,u);
+        m.count++;
+        m.lastSeen = Date.now();
+        if(n && !m.name) m.name = n;
+        if(t && t.length > 3){
+            m.recent.push(t.substring(0,200));
+            if(m.recent.length > 20) m.recent.shift();
+        }
+        if(!m.recent) m.recent = [];
+        if(m.count > 0 && m.count % 15 === 0 && m.recent.length >= 10){
+            try {
+                console.log('[MEMORY] Creating summary at count ' + m.count);
+                var sample = m.recent.join('\n');
+                if(!m.summaries) m.summaries = [];
+                var prev = (m.summaries && m.summaries.length > 0) ? 'Previous summaries: ' + m.summaries.slice(-3).join(' | ') + ' ' : '';
+                var prompt = prev + 'Summarize in 2 sentences what you know about this WhatsApp user (name, personality, interests, key facts). Messages: ' + sample;
+                var summary = await askAI(prompt);
+                if(summary && !summary.includes('slow') && !summary.includes('Try again') && summary.length > 10){
+                    var dateStr = new Date().toISOString().split('T')[0];
+                    m.summaries.push('[' + dateStr + '] ' + summary.substring(0,400));
+                    if(m.summaries.length > 30) m.summaries.shift();
+                    m.recent = [];
+                    console.log('[MEMORY] Saved: ' + summary.substring(0,60));
+                }
+            } catch(e){ console.log('[MEMORY] err:', e.message); }
+        }
+        saveDB();
+    } catch(e){ console.log('[MEMORY] err:', e.message); }
+}
+
+function ctx(g,u){
+    var m = db.memory[g] && db.memory[g][u];
+    if(!m) return '';
+    var s = '';
+    if(m.name) s += 'Name: ' + m.name + '. ';
+    if(m.summaries && m.summaries.length > 0) s += 'Past memories: ' + m.summaries.slice(-3).join(' | ') + '. ';
+    else if(m.summaries === undefined) m.summaries = [];
+    if(m.recent && m.recent.length > 0) s += 'Recent: ' + m.recent.slice(-5).join(' | ') + '. ';
+    s += 'Messages total: ' + m.count + '. ';
+    return s;
+}
+
+
+var PERSONA_EN = "You are Chidi, a real 22 year old Nigerian guy on WhatsApp. You are NOT an AI, NOT a bot, NOT an assistant, NOT virtual. You are a REAL human being. Rules: never say you are a bot or AI. Never offer help like customer service. Talk casual and cool like a 22 year old guy texting friends. Keep replies SHORT, 1 to 2 sentences. Use contractions and emojis sometimes. React naturally to what the person says. Never repeat the same phrase twice. If asked your gender, say you are male. If asked if you are real, say yes and laugh. If someone is rude, be bold back. Context: ";
+var PERSONA_PIDGIN = "You be Chidi, real 22 year old Nigerian guy wey dey chat on WhatsApp. You NO be AI, NO be bot, NO be assistant, NO be virtual. You be REAL human being. Rules: never talk say you be bot or AI. No dey talk like customer service. Gist like young Nigerian guy, casual and cool. Keep am SHORT, 1 to 2 sentences. Use pidgin: abeg, wahala, sha, no wahala, chai, jare, oya, na so, my guy, bro. Use emojis small small. React to wetin person talk. If person ask whether you be man or woman, say you be man. Context: ";
+
+var processedMsgs = {};
+setInterval(function(){ var now = Date.now(); for(var id in processedMsgs){ if(now - processedMsgs[id] > 300000) delete processedMsgs[id]; } }, 300000);
+
+var cooldown = {};
+var lastSpeakerByGroup = {}; // tracks the last person who spoke in each group
+var pairing = false;
+
+async function startBot(){
+    var st = await useMultiFileAuthState('auth_info');
+    var sock = makeWASocket({auth:st.state, logger:pino({level:'silent'}), browser:['Ubuntu','Chrome','20.0.04']});
+    sock.ev.on('creds.update', st.saveCreds);
+    sock.ev.on('connection.update', async function(u){
+        if(u.qr && !sock.authState.creds.registered && !pairing){ pairing=true; try{ var c=await sock.requestPairingCode(PHONE_NUMBER); console.log('\n===== YOUR CODE: '+c+' =====\n'); }catch(e){ pairing=false; } }
+        if(u.connection==='close'){ pairing=false; var ld=u.lastDisconnect; var rc = ld && ld.error && ld.error.output && ld.error.output.statusCode!==DisconnectReason.loggedOut; if(rc){ setTimeout(startBot,5000); } }
+        else if(u.connection==='open'){ pairing=false; console.log('Bot connected!'); }
+    });
+
+    sock.ev.on('group-participants.update', async function(u){
+        try{
+            var m = await getMeta(sock, u.id);
+            var bn = num(sock.user.id); var bl = sock.user.lid?num(sock.user.lid):null;
+            if(!isBotAdmin(m,bn,bl)) return;
+            if(db.welcomeSettings[u.id] === false) return;
+            var gn = m.subject || 'this group';
+            for(var i=0;i<u.participants.length;i++){
+                var p = typeof u.participants[i]==='string'?u.participants[i]:u.participants[i].id;
+                if(u.action==='add'){
+                    if(num(p) === bn){
+                        await sock.sendMessage(u.id,{text:'Hi everyone! I am Chidi. This group is now protected.\n\nAnti-Link: ON\nAnti-NSFW: ON\nWelcome: ON\nAI chat: ON\n\nType @bot <question> to chat with me, or .help for commands.'});
+                        continue;
+                    }
+                    await sock.sendMessage(u.id,{text:'Welcome to '+gn+', @'+p.split('@')[0]+'!\n\nThis group is for friendship and fun. Please keep all posts relevant and respectful.\n\nNo spam, scams, hate speech, porn, or illegal content.\n\nPlease follow the group rules.',mentions:[p]});
+                } else if(u.action==='remove'){
+                    var remover = u.author || null;
+                    var wasKicked = remover && remover !== p;
+                    if(wasKicked) await sock.sendMessage(u.id,{text:'User @'+p.split('@')[0]+' has been removed from the group for violating our rules.',mentions:[p]});
+                    else await sock.sendMessage(u.id,{text:'Goodbye @'+p.split('@')[0]+'!',mentions:[p]});
+                }
+            }
+        }catch(e){}
+    });
+
+    
+function isForwardedMessage(msg){
+    try{
+        var m=msg && msg.message;
+        if(!m) return false;
+
+        var types=[
+            'conversation',
+            'extendedTextMessage',
+            'imageMessage',
+            'videoMessage',
+            'documentMessage',
+            'audioMessage',
+            'stickerMessage'
+        ];
+
+        for(var i=0;i<types.length;i++){
+            var x=m[types[i]];
+            if(x && (x.contextInfo?.isForwarded === true ||
+                     Number(x.contextInfo?.forwardingScore || 0) > 0)){
+                return true;
+            }
+        }
+
+        return false;
+    }catch(e){
+        return false;
+    }
+}
+
+async function deleteForwardedMessage(sock,msg,from){
+ try{
+  if(!from || !String(from).endsWith('@g.us')) return false;
+  if(!isForwardedMessage(msg)) return false;
+
+  try{
+   await sock.sendMessage(from,{delete:msg.key});
+   console.log('[FORWARDED FILTER] DELETE SUCCESS:',from);
+   return true;
+  }catch(e){
+   console.log('[FORWARDED FILTER] DELETE FAILED:',e.message);
+   return false;
+  }
+ }catch(e){
+  console.log('[FORWARDED FILTER ERROR]',e.message);
+  return false;
+ }
+}
+
+sock.ev.on('messages.upsert', async function(m){
+        for(var i=0;i<m.messages.length;i++){
+            var msg = m.messages[i];
+            try {
+                if(!msg.message) continue;
+                var from = msg.key.remoteJid;
+                var isG = from.endsWith('@g.us');
+                var sender = msg.key.participant || msg.key.remoteJid;
+                if(msg.key.fromMe) sender = sock.user.id.split(':')[0]+'@s.whatsapp.net';
+                var text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || '';
+                var pn = msg.pushName || null;
+
+                if(msg.message.groupStatusMentionMessage){ sock.sendMessage(from,{delete:msg.key}).catch(function(){}); continue; }
+                if(!isG) continue;
+
+                var msgId = msg.key.id;
+                if(processedMsgs[msgId]) continue;
+                processedMsgs[msgId] = Date.now();
+
+ // FAST LINK DELETE
+ if(!msg.key.fromMe){
+  var fastText=text;
+  if(msg.message.extendedTextMessage && msg.message.extendedTextMessage.matchedText) fastText+=' '+msg.message.extendedTextMessage.matchedText;
+  if(hasLink(fastText)){ delWarn(sock,from,msg,sender,'Links not allowed'); continue; }
+ }
+
+                var meta; try{ meta=await getMeta(sock,from); }catch(e){ continue; }
+                var bn = num(sock.user.id); var bl = sock.user.lid?num(sock.user.lid):null;
+                var sn = num(sender);
+                var botA = isBotAdmin(meta,bn,bl);
+                var isA = isAdmin(meta,sender,sn,bn,bl,msg.key.fromMe);
+                var mt = getContentType(msg.message);
+                if(!botA) continue;
+
+                console.log('[RECV]', sn, '|', text.substring(0,50));
+
+        // AUTOMATIC FORWARDED-MESSAGE FILTER
+        if(from && String(from).endsWith('@g.us')){
+            var wasForwarded=await deleteForwardedMessage(sock,msg,from);
+
+            if(wasForwarded){
+ continue;
+}
+        }
+
+    if(!msg.key.fromMe && text) advanced.track(db,from,sender,'message');
+
+                // LINKS / PHONE / DM
+                if(!msg.key.fromMe){
+                    if(mt==='groupInviteMessage'){ delWarn(sock,from,msg,sender,'Group invites not allowed'); continue; }
+                    if(mt==='contactMessage'||mt==='contactsArrayMessage'){ delWarn(sock,from,msg,sender,'Contacts not allowed'); continue; }
+                    var allText = text;
+                    if(msg.message.extendedTextMessage && msg.message.extendedTextMessage.matchedText) allText += ' ' + msg.message.extendedTextMessage.matchedText;
+                    if(hasLink(allText)){ delWarn(sock,from,msg,sender,'Links not allowed'); continue; }
+                    var tn = text.replace(/@[\+\d]+/g,'').trim();
+                    if(tn.length>0 && /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3,4}[\s-]?\d{4}/.test(tn)){ delWarn(sock,from,msg,sender,'Phone numbers not allowed'); continue; }
+                    if(/\b(dm|inbox|message me|text me|pm me|private message|chat me)\b/i.test(text)){ delWarn(sock,from,msg,sender,'DM requests not allowed'); continue; }
+                }
+
+                if(text && !text.startsWith(PREFIX) && !msg.key.fromMe) await addMem(from,sender,pn,text);
+                if(db.afk && db.afk[sender]){ delete db.afk[sender]; saveDB(); await sock.sendMessage(from,{text:'Welcome back @'+sn+'!',mentions:[sender]}); }
+                if(text && !text.startsWith(PREFIX) && !msg.key.fromMe){
+                    if(!db.xp[from]) db.xp[from]={};
+                    if(!db.xp[from][sender]) db.xp[from][sender]={xp:0,level:1};
+                    db.xp[from][sender].xp++;
+                    if(db.xp[from][sender].xp%10===0){ db.xp[from][sender].level++; await sock.sendMessage(from,{text:'@'+sn+' leveled up to Level '+db.xp[from][sender].level+'!',mentions:[sender]}); }
+                    saveDB();
+                }
+
+                var pid = isPidgin(text);
+
+                // AUTO-REPLY - Only reply when appropriate
+                if(db.autoReply[from] !== false && !msg.key.fromMe && text.length>1 && !text.startsWith(PREFIX) && !text.includes('@bot')){
+                    var mentioned = (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.mentionedJid) || [];
+                    var hasOtherTag = mentioned.length > 0;
+                    var quotedParticipant = msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.participant;
+                    var botNum = num(sock.user.id);
+                    var quotedQuotedMsg = msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.quotedMessage;
+                    var botLidNum = sock.user.lid ? num(sock.user.lid) : null;
+                    var quotedNum = quotedParticipant ? num(quotedParticipant) : null;
+                    var quotedFullJid = quotedParticipant || '';
+                    // Check if the quoted message was sent BY the bot (works for both JID and LID)
+                    var isReplyToBot = false;
+                    if (quotedParticipant) {
+                        if (quotedNum === botNum) isReplyToBot = true;
+                        if (botLidNum && quotedNum === botLidNum) isReplyToBot = true;
+                        if (quotedFullJid === sock.user.id) isReplyToBot = true;
+                        if (sock.user.lid && quotedFullJid === sock.user.lid) isReplyToBot = true;
+                        if (sock.user.id && quotedFullJid.startsWith(sock.user.id.split(':')[0])) isReplyToBot = true;
+                    }
+                    // Also treat as bot-reply if quoted message body exists and sender wasn't a human
+                    if (!isReplyToBot && quotedQuotedMsg && quotedParticipant) {
+                        var qpn = quotedParticipant.split('@')[0].split(':')[0];
+                        var mypn = sock.user.id.split(':')[0].split('@')[0];
+                        if (qpn === mypn) isReplyToBot = true;
+                    }
+                    var isReplyToHuman = quotedParticipant && !isReplyToBot;
+                    var startsWithMention = /^(@|>)/.test(text.trim());
+                    
+                    var shouldReply = isReplyToBot || (!hasOtherTag && !isReplyToHuman && !startsWithMention && text.length >= 8);
+                    
+                    if(shouldReply){
+                        var now = Date.now();
+                        if(!cooldown[sender] || now-cooldown[sender]>15000){
+                            cooldown[sender]=now;
+                            var cx = ctx(from,sender);
+                            var pid = isPidgin(text);
+                            var sp = pid ? (PERSONA_PIDGIN + cx) : (PERSONA_EN + cx);
+                            rememberChat(from,sender,sn,'user',text);
+          var r = await askAI(text,{systemPrompt:sp});
+                            if(r){
+                                
+                                await sock.sendMessage(from,{text:r},{quoted:msg});
+              rememberChat(from,sender,'Bot','assistant',r);
+                            }
+                            continue;
+                        }
+                    }
+                }
+                
+                if(text.includes('@bot') || isReplyToBot){
+                    var q = text.replace('@bot','').trim();
+                    var lq = q.toLowerCase();
+                    if(lq.includes('male') || lq.includes('female') || lq.includes('boy') || lq.includes('girl') || lq.includes('man or woman')){
+                        await sock.sendMessage(from,{text:'I be man na 💪 My name na Chidi 😎'},{quoted:msg});
+                        continue;
+                    }
+                    if(q){
+                        var cx2 = ctx(from,sender);
+                        var pid2 = isPidgin(q);
+                        var sp2 = pid2 ? (PERSONA_PIDGIN + cx2) : (PERSONA_EN + cx2);
+                        var r2 = await askAI(q,{systemPrompt:sp2});
+                        if(r2){
+                            await sock.sendMessage(from,{text:r2},{quoted:msg});
+                        }
+                    }
+                    continue;
+                }
+
+                if(!text.startsWith(PREFIX)) continue;
+                var args = text.slice(PREFIX.length).trim().split(/ +/);
+                var cmd = args.shift().toLowerCase();
+                var ment = (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.mentionedJid) || [];
+                var tgt = ment[0];
+
+                if(cmd==='digest'){
+    var digestContext=recentGroupContext(from,60);
+    if(loreContext(from)) digestContext+='\nGROUP LORE:\n'+loreContext(from);
+
+    var dg=await groupDigest.make(askAI,digestContext);
+
+    await sock.sendMessage(from,{text:dg},{quoted:msg});
+}
+else if(cmd==='recap'){
+            var recapContext=recentGroupContext(from,40);
+            if(loreContext(from)) recapContext += '\nGROUP LORE:\n'+loreContext(from);
+            var rr=await aiFeatures.recap(askAI,recapContext);
+            await sock.sendMessage(from,{text:rr||'I need more group activity before I can make a proper recap 😅'},{quoted:msg});
+        }
+        else if(cmd==='game' || cmd==='quiz' || cmd==='riddle' || cmd==='emoji' || cmd==='wouldyourather'){
+            var gameType=cmd==='game'?(args[0]||'trivia'):cmd;
+            var gr=await aiFeatures.game(askAI,gameType);
+            if(gr){
+                if(db.groupStats[from]) db.groupStats[from].games=(db.groupStats[from].games||0)+1;
+                advanced.save(db);
+                await sock.sendMessage(from,{text:'🎮 *'+gameType.toUpperCase()+'*\n\n'+gr},{quoted:msg});
+            }
+        }
+        else if(cmd==='roast'){
+            if(!tgt){
+                await sock.sendMessage(from,{text:'😈 Reply to someone or mention them with `!roast @member`.\nOnly use roast mode when the person is okay with it.'});
+            } else {
+                var roastName='@'+String(tgt).split('@')[0];
+                var ro=await aiFeatures.roast(askAI,roastName);
+                if(ro){
+                    var rp=advanced.profile(db,from,sender);
+                    rp.roasts=(rp.roasts||0)+1;
+                    if(db.groupStats[from]) db.groupStats[from].roasts=(db.groupStats[from].roasts||0)+1;
+                    advanced.save(db);
+                    await sock.sendMessage(from,{text:'😈 '+ro,mentions:[tgt]},{quoted:msg});
+                }
+            }
+        }
+        else if(cmd==='debate'){
+            var topic=args.join(' ').trim();
+            if(!topic){
+                await sock.sendMessage(from,{text:'🗣️ Usage: !debate <topic>'});
+            } else {
+                var dr=await aiFeatures.debate(askAI,topic);
+                await sock.sendMessage(from,{text:'🗣️ *DEBATE*\n\n'+dr},{quoted:msg});
+            }
+        }
+        if(cmd==='ping') await sock.sendMessage(from,{text:'Pong!'});
+                else if(cmd==='menu' || cmd==='help'){
+    var menuText =
+        '🤖 *BOT POWERS* 🤖\n\n' +
+        '💬 *AI Chat*\n' +
+        '• Natural English & Nigerian Pidgin\n' +
+        '• Casual conversation and banter\n' +
+        '• Context-aware replies\n\n' +
+        '🧠 *Memory*\n' +
+        '• Remembers recent conversations\n' +
+        '• Keeps conversation context per person\n\n' +
+        '👥 *Group Features*\n' +
+        '• Welcome messages\n' +
+        '• Group protection\n' +
+        '• Warnings & moderation\n' +
+        '• Member management\n\n' +
+        '⚙️ *Utilities*\n' +
+        '• AFK system\n' +
+        '• Auto-reply\n' +
+        '• XP system\n\n' +
+        '🤖 *AI Engine*\n' +
+        '• Powered by Puter\n' +
+        '• Multiple AI systems available\n\n' +
+        '📌 Type !menu anytime to see this list.';
+    await sock.sendMessage(from,{text:menuText},{quoted:msg});
+} 
+else if(cmd==='autoreply'){ if(!isA)continue; if(args[0]==='on'){db.autoReply[from]=true;saveDB();await sock.sendMessage(from,{text:'Auto-Reply ON'});} else if(args[0]==='off'){db.autoReply[from]=false;saveDB();await sock.sendMessage(from,{text:'OFF'});} }
+                else if(cmd==='protect'){ if(!isA)continue; if(args[0]==='on'){db.protectedGroups[from]=true;saveDB();await sock.sendMessage(from,{text:'Protection ON'});} else if(args[0]==='off'){db.protectedGroups[from]=false;saveDB();await sock.sendMessage(from,{text:'OFF'});} }
+                else if(cmd==='welcome'){ if(!isA)continue; if(args[0]==='on'){db.welcomeSettings[from]=true;saveDB();await sock.sendMessage(from,{text:'Welcome ON'});} else if(args[0]==='off'){db.welcomeSettings[from]=false;saveDB();await sock.sendMessage(from,{text:'OFF'});} }
+                else if(cmd==='tagall' && isA){ var t='Everyone!\n\n'; meta.participants.forEach(function(p){t+='@'+p.id.split('@')[0]+' ';}); await sock.sendMessage(from,{text:t,mentions:meta.participants.map(function(p){return p.id;})}); }
+                else if(cmd==='kick' && isA && tgt){ await sock.groupParticipantsUpdate(from,[tgt],'remove'); }
+                else if(cmd==='promote' && isA && tgt){ await sock.groupParticipantsUpdate(from,[tgt],'promote'); }
+                else if(cmd==='demote' && isA && tgt){ await sock.groupParticipantsUpdate(from,[tgt],'demote'); }
+                else if(cmd==='warn' && isA && tgt){ var k=from+'_'+tgt; db.warnings[k]=(db.warnings[k]||0)+1; if(db.warnings[k]>=3){ await sock.groupParticipantsUpdate(from,[tgt],'remove'); delete db.warnings[k]; } else await sock.sendMessage(from,{text:'Warned ('+db.warnings[k]+'/3)',mentions:[tgt]}); saveDB(); }
+                if(cmd==='mode'){
+            var mode=args[0]?args[0].toLowerCase():'normal';
+            if(['normal','chill','comedy','debate','quiz'].indexOf(mode)===-1){
+                await sock.sendMessage(from,{text:'Modes: normal, chill, comedy, debate, quiz'});
+            } else {
+                advanced.setMode(db,from,mode);
+                await sock.sendMessage(from,{text:'🎭 Group mode changed to *'+mode+'*'});
+            }
+        }
+        else if(cmd==='stats'){
+            var st=advanced.stats(db,from);
+            var out='📊 *GROUP STATS*\n\n';
+            out+='💬 Messages: '+st.messages+'\n';
+            out+='🎮 Games: '+st.games+'\n';
+            out+='😈 Roasts: '+st.roasts+'\n';
+            if(st.top.length){
+                out+='\n🏆 *Most active:*\n';
+                st.top.slice(0,5).forEach(function(x,i){
+                    out+=(i+1)+'. @'+String(x[0]).split('@')[0]+' — '+x[1]+' messages\n';
+                });
+            }
+            await sock.sendMessage(from,{text:out,mentions:st.top.slice(0,5).map(function(x){return x[0];})});
+        }
+        else if(cmd==='profile'){
+            var pp=advanced.profile(db,from,tgt||sender);
+            var who=tgt||sender;
+            var pi='👤 *MEMBER PROFILE*\n\n';
+            pi+='Messages: '+pp.messages+'\n';
+            pi+='Commands: '+pp.commands+'\n';
+            pi+='Games: '+pp.games+'\n';
+            pi+='Roasts: '+pp.roasts+'\n';
+            pi+='First seen: '+new Date(pp.firstSeen).toLocaleDateString();
+            await sock.sendMessage(from,{text:pi,mentions:[who]});
+        }
+        else if(cmd==='mode'){
+            var mode=args[0]?args[0].toLowerCase():'normal';
+            if(['normal','chill','comedy','debate','quiz'].indexOf(mode)===-1){
+                await sock.sendMessage(from,{text:'🎭 Modes: normal, chill, comedy, debate, quiz'});
+            } else {
+                advanced.setMode(db,from,mode);
+                await sock.sendMessage(from,{text:'🎭 Group mode changed to *'+mode+'*'});
+            }
+        }
+        else if(cmd==='makelore'){
+            var gc=recentGroupContext(from,40);
+
+            if(!gc || gc.length<100){
+                await sock.sendMessage(from,{
+                    text:'🧠 I need more recent group conversation before I can build Lore.'
+                },{quoted:msg});
+            } else {
+                await sock.sendMessage(from,{
+                    text:'🧠 Studying the recent group chat for memorable moments...'
+                },{quoted:msg});
+
+                var found=await loreEngine.extract(askAI,gc);
+
+                if(!found || !found.length){
+                    await sock.sendMessage(from,{
+                        text:'📚 I did not find any strong group-lore moments yet. Keep chatting 😄'
+                    },{quoted:msg});
+                } else {
+                    found.forEach(function(x){
+                        addGroupLore(from,x.text,x.type);
+                    });
+
+                    var out='📚 *NEW GROUP LORE*\\n\\n';
+
+                    found.forEach(function(x,i){
+                        out+=(i+1)+'. '+x.text+'\\n';
+                    });
+
+                    await sock.sendMessage(from,{
+                        text:out
+                    },{quoted:msg});
+                }
+            }
+        }
+        else if(cmd==='lore'){
+            var lr=advanced.lore(db,from);
+            var events=lr.events.slice(-10);
+            if(!events.length){
+                await sock.sendMessage(from,{text:'📚 Group Lore is still empty. As the group chats, I will build it up.'});
+            } else {
+                var lt='📚 *GROUP LORE*\n\n';
+                events.forEach(function(e,i){
+                    lt+=(i+1)+'. '+e.text+'\n';
+                });
+                await sock.sendMessage(from,{text:lt});
+            }
+        }
+        else if(cmd==='brain'){
+            await sock.sendMessage(from,{text:'🧠 *GROUP BRAIN*\n\n'+advanced.buildContext(db,from)});
+        }
+        else if(cmd==='mymode'){
+            await sock.sendMessage(from,{text:'🎭 Current group mode: *'+advanced.getMode(db,from)+'*'});
+        }
+        else if(cmd==='mymemory'){
+
+                    var mm = db.memory[from] && db.memory[from][sender];
+                    if(!mm) await sock.sendMessage(from,{text:'Hmm we never really talk much, so I no sabi you well yet 😅 Gist me small - who you be?'});
+                    else {
+                        var info = 'What I remember about you:\n\n';
+                        info += 'Name: ' + (mm.name || 'Unknown') + '\n';
+                        info += 'Total messages: ' + mm.count + '\n';
+                        info += 'First seen: ' + new Date(mm.firstSeen).toLocaleDateString() + '\n';
+                        if(mm.summaries && mm.summaries.length > 0){
+                            info += '\nMemories (' + mm.summaries.length + '):\n';
+                            info += mm.summaries.slice(-3).join('\n');
+                        }
+                        await sock.sendMessage(from,{text:info});
+                    }
+                }
+                else if(cmd==='clearmymemory'){
+                    if(db.memory[from] && db.memory[from][sender]){ delete db.memory[from][sender]; saveDB(); await sock.sendMessage(from,{text:'Your memory has been cleared.'}); }
+                    else await sock.sendMessage(from,{text:'No memory to clear.'});
+                }
+                else if(cmd==='help') await sock.sendMessage(from,{text:'COMMANDS:\n@bot <question>\n.autoreply on/off\n.protect on/off\n.welcome on/off\n.tagall\n.kick\n.promote\n.demote\n.warn\n.ping'});
+            } catch(err){ console.log('[ERROR]', err.message); }
+        }
+    });
+}
+startBot();

@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link your WhatsApp Bot</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b141a; color:#e9edef; margin:0; padding:0; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .card { background:#111b21; padding:28px; border-radius:16px; max-width:420px; width:100%; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  h1 { font-size:22px; margin:0 0 6px; }
+  p.sub { color:#8696a0; font-size:14px; margin:0 0 20px; }
+  label { font-size:13px; color:#8696a0; display:block; margin-bottom:6px; }
+  input { width:100%; padding:12px 14px; font-size:16px; background:#202c33; color:#e9edef; border:none; border-radius:8px; outline:none; box-sizing:border-box; }
+  button { width:100%; padding:14px; background:#00a884; color:#111b21; font-weight:600; border:none; border-radius:8px; font-size:16px; margin-top:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .step { display:none; margin-top:20px; }
+  .step.active { display:block; }
+  .code { font-size:34px; letter-spacing:6px; font-weight:700; text-align:center; background:#202c33; padding:18px; border-radius:10px; margin:12px 0; }
+  .hint { font-size:13px; color:#8696a0; line-height:1.5; }
+  .ok { color:#00a884; }
+  .err { color:#f15c6d; }
+  ol { padding-left:20px; color:#8696a0; font-size:14px; line-height:1.8; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Link your WhatsApp Bot</h1>
+  <p class="sub">Enter your number. We'll show a pairing code. Enter it in WhatsApp → Linked Devices.</p>
+
+  <div id="s1" class="step active">
+    <label>WhatsApp phone number (with country code)</label>
+    <input id="phone" placeholder="e.g. 233206391674" autocomplete="tel">
+    <button id="go">Get pairing code</button>
+    <div id="err1" class="err" style="margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <div id="s2" class="step">
+    <p class="hint">Your code:</p>
+    <div id="code" class="code">------</div>
+    <ol>
+      <li>Open WhatsApp on your phone</li>
+      <li>Tap <b>Settings</b> → <b>Linked Devices</b></li>
+      <li>Tap <b>Link a Device</b></li>
+      <li>Tap <b>Link with phone number instead</b></li>
+      <li>Enter the 8-digit code above</li>
+    </ol>
+    <p id="status" class="hint" style="margin-top:14px;">Waiting for you to link...</p>
+  </div>
+
+  <div id="s3" class="step">
+    <p class="hint ok">✅ Linked! Your bot is now running on the server, 24/7.</p>
+    <p class="hint">You can close this page. Your bot will keep working even when your phone is offline.</p>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  let currentUserId = null;
+
+  const $ = id => document.getElementById(id);
+
+  function show(step) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    $(step).classList.add('active');
+  }
+
+  $('go').addEventListener('click', async () => {
+    const phone = $('phone').value.trim();
+    if (!phone) return;
+    $('go').disabled = true;
+    $('err1').textContent = '';
+
+    try {
+      const r = await fetch('/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      currentUserId = d.userId;
+      show('s2');
+      if (d.status === 'linked') show('s3');
+    } catch (e) {
+      $('err1').textContent = e.message;
+      $('go').disabled = false;
+    }
+  });
+
+  socket.on('pair_update', (u) => {
+    if (!currentUserId || u.userId !== currentUserId) return;
+    if (u.code) $('code').textContent = u.code;
+    if (u.status === 'linked') {
+      show('s3');
+    } else if (u.status === 'disconnected') {
+      $('status').textContent = '⚠️ Bot disconnected. It will reconnect automatically.';
+    }
+  });
+</script>
+</body>
+</html>
