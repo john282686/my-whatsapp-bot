@@ -21,6 +21,24 @@ const PREFIX = '.';
 const PHONE_NUMBER = '233206391674';
 const DATA_ROOT = process.env.DATA_ROOT || '.';
 
+const KEY_POOL = {
+    groq: [
+        process.env.GROQ_KEY || ''
+    ],
+    cerebras: [
+        process.env.CEREBRAS_KEY_1 || '',
+        process.env.CEREBRAS_KEY_2 || '',
+        process.env.CEREBRAS_KEY_3 || '',
+        process.env.CEREBRAS_KEY_4 || ''
+    ],
+    cohere: [
+        process.env.COHERE_KEY || ''
+    ],
+    mistral: [
+        process.env.MISTRAL_KEY || ''
+    ]
+};
+
 var advanced = require('./advanced_features');
 var aiFeatures = require('./ai_features');
 var memberProfiles = require('./member_profiles');
@@ -55,7 +73,8 @@ var db = {
     relationshipGraph: {},
     guardianLog: {},
     guardianCooldown: {},
-    predictionLedger: {}
+    predictionLedger: {},
+    dmReplies: false
 };
 
 try {
@@ -376,12 +395,11 @@ async function askAI(q, opts) {
     var rules =
         '\n\nIMPORTANT RULES:\n' +
         '- Read the recent conversation before replying.\n' +
-        '- Do NOT repeat a question you already asked this person.\n' +
+        '- Do NOT repeat a question you already asked.\n' +
         '- Do NOT repeat an answer or use nearly identical wording.\n' +
-        '- If the person already answered a question, move the conversation forward.\n' +
         '- Respond directly to what the person just said.\n' +
-        '- Keep replies SHORT (1-2 sentences).' +
-            ' NEVER start your reply with a label (no You:, Person:, me:, them:, Chidi:). Just reply naturally as if texting.\n';
+        '- Keep replies SHORT (1-2 sentences).\n' +
+        '- NEVER start your reply with a label (no You:, Person:, me:, them:, Chidi:).\n';
 
     var sp = (opts.systemPrompt || '') + rules;
 
@@ -397,46 +415,86 @@ async function askAI(q, opts) {
     ];
     sp = moods[Math.floor(Math.random() * moods.length)] + ' ' + sp;
 
-    var m = [];
-    if (sp) m.push({ role: 'system', content: sp });
-    m.push({ role: 'user', content: q });
+    var messages = [];
+    if (sp) messages.push({ role: 'system', content: sp });
+    messages.push({ role: 'user', content: q });
 
-    var models = ['gpt-4o-mini', 'gpt-4o', 'claude-3-5-sonnet'];
-
-    for (var i = 0; i < models.length; i++) {
-        var ctrl = new AbortController();
-        var timer = setTimeout(function () {
-            ctrl.abort();
-        }, 12000);
-
+    // 1. Groq
+    for (var g = 0; g < KEY_POOL.groq.length; g++) {
+        if (!KEY_POOL.groq[g]) continue;
         try {
-            console.log('[AI] trying ' + models[i]);
-            var r = await fetch('http://127.0.0.1:8741/v1/chat/completions', {
+            var rG = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: models[i],
-                    messages: m,
-                    max_tokens: 250,
-                    temperature: 1.0
-                }),
-                signal: ctrl.signal
+                headers: { 'Authorization': 'Bearer ' + KEY_POOL.groq[g], 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: messages, max_tokens: 300, temperature: 0.9 })
             });
-
-            clearTimeout(timer);
-            var d = await r.json();
-
-            if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
-                console.log('[AI] OK via ' + models[i]);
-                return d.choices[0].message.content;
+            var dG = await rG.json();
+            if (dG.choices && dG.choices[0] && dG.choices[0].message && dG.choices[0].message.content) {
+                console.log('[AI] OK via Groq');
+                return dG.choices[0].message.content;
             }
-            console.log('[AI] ' + models[i] + ' returned no content');
-        } catch (e) {
-            clearTimeout(timer);
-            console.log('[AI] ' + models[i] + ':', e.name === 'AbortError' ? 'TIMEOUT' : e.message);
+            if (dG.error) console.log('[AI] Groq err:', JSON.stringify(dG.error).substring(0, 120));
+        } catch (e) { console.log('[AI] Groq:', e.message); }
+    }
+
+    // 2. Cerebras (4 keys, try each)
+    var cModels = ['llama-3.3-70b', 'llama3.1-8b'];
+    for (var c = 0; c < KEY_POOL.cerebras.length; c++) {
+        if (!KEY_POOL.cerebras[c]) continue;
+        for (var cm = 0; cm < cModels.length; cm++) {
+            try {
+                var rC = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + KEY_POOL.cerebras[c], 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: cModels[cm], messages: messages, max_tokens: 300, temperature: 0.9 })
+                });
+                var dC = await rC.json();
+                if (dC.choices && dC.choices[0] && dC.choices[0].message && dC.choices[0].message.content) {
+                    console.log('[AI] OK via Cerebras key#' + c);
+                    return dC.choices[0].message.content;
+                }
+                if (dC.error) console.log('[AI] Cerebras err:', JSON.stringify(dC.error).substring(0, 120));
+            } catch (e) { console.log('[AI] Cerebras:', e.message); }
         }
     }
-    console.log('[AI] ALL MODELS FAILED — is Puter running on :8741?');
+
+    // 3. Mistral
+    for (var m = 0; m < KEY_POOL.mistral.length; m++) {
+        if (!KEY_POOL.mistral[m]) continue;
+        try {
+            var rM = await fetch('https://api.mistral.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + KEY_POOL.mistral[m], 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'mistral-small-latest', messages: messages, max_tokens: 300, temperature: 0.9 })
+            });
+            var dM = await rM.json();
+            if (dM.choices && dM.choices[0] && dM.choices[0].message && dM.choices[0].message.content) {
+                console.log('[AI] OK via Mistral');
+                return dM.choices[0].message.content;
+            }
+            if (dM.error) console.log('[AI] Mistral err:', JSON.stringify(dM.error).substring(0, 120));
+        } catch (e) { console.log('[AI] Mistral:', e.message); }
+    }
+
+    // 4. Cohere
+    for (var co = 0; co < KEY_POOL.cohere.length; co++) {
+        if (!KEY_POOL.cohere[co]) continue;
+        try {
+            var rCo = await fetch('https://api.cohere.com/v2/chat', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + KEY_POOL.cohere[co], 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'command-r-08-2024', messages: messages, max_tokens: 300 })
+            });
+            var dCo = await rCo.json();
+            if (dCo.message && dCo.message.content && dCo.message.content[0] && dCo.message.content[0].text) {
+                console.log('[AI] OK via Cohere');
+                return dCo.message.content[0].text;
+            }
+            if (dCo.error) console.log('[AI] Cohere err:', JSON.stringify(dCo.error).substring(0, 120));
+        } catch (e) { console.log('[AI] Cohere:', e.message); }
+    }
+
+    console.log('[AI] ALL PROVIDERS FAILED');
     return null;
 }
 
@@ -638,7 +696,7 @@ async function startBot() {
                 var from = msg.key.remoteJid;
                 if (!from) continue;
                 var isDM = !String(from).endsWith('@g.us');
-                if (isDM) {
+                if (isDM && db.dmReplies === true) {
                     if (msg.key.fromMe) continue;
                     var dmText = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || '';
                     if (dmText && dmText.length > 0) {
