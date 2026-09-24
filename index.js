@@ -1662,6 +1662,19 @@ async function startBot() {
                             await sock.sendMessage(from, { text: uOut });
                         }
                     }
+                } else if (cmd === 'dmon' || cmd === 'dms-on') {
+                    if (!isA) continue;
+                    db.dmReplies = true;
+                    saveDBNow();
+                    await sock.sendMessage(from, { text: '\u2705 DM replies turned ON' }, { quoted: msg });
+                } else if (cmd === 'dmoff' || cmd === 'dms-off') {
+                    if (!isA) continue;
+                    db.dmReplies = false;
+                    saveDBNow();
+                    await sock.sendMessage(from, { text: '\u274C DM replies turned OFF' }, { quoted: msg });
+                } else if (cmd === 'dmstatus') {
+                    var dmState = db.dmReplies === false ? 'OFF' : 'ON';
+                    await sock.sendMessage(from, { text: '\uD83D\uDCE8 DM replies are *' + dmState + '*' }, { quoted: msg });
                 } else if (cmd === 'aboutme') {
                     var ltmUser = longTermMemory.getUser(db, sender);
                     var aboutOut = '📌 *LONG-TERM MEMORY*\n\n';
