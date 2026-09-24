@@ -19,6 +19,7 @@ const fs = require('fs');
 
 const PREFIX = '.';
 const PHONE_NUMBER = '233206391674';
+const DATA_ROOT = process.env.DATA_ROOT || '.';
 
 var advanced = require('./advanced_features');
 var aiFeatures = require('./ai_features');
@@ -58,8 +59,8 @@ var db = {
 };
 
 try {
-    if (fs.existsSync('./database.json')) {
-        var loaded = JSON.parse(fs.readFileSync('./database.json'));
+    if (fs.existsSync(DATA_ROOT + '/database.json')) {
+        var loaded = JSON.parse(fs.readFileSync(DATA_ROOT + '/database.json'));
         Object.assign(db, loaded);
     }
 } catch (e) {
@@ -79,7 +80,7 @@ function saveDB() {
     _saveTimer = setTimeout(function () {
         _saveTimer = null;
         try {
-            fs.writeFileSync('./database.json', JSON.stringify(db, null, 2));
+            fs.writeFileSync(DATA_ROOT + '/database.json', JSON.stringify(db, null, 2));
         } catch (e) {
             console.log('[DB] save error:', e.message);
         }
@@ -91,7 +92,7 @@ function saveDBNow() {
         _saveTimer = null;
     }
     try {
-        fs.writeFileSync('./database.json', JSON.stringify(db, null, 2));
+        fs.writeFileSync(DATA_ROOT + '/database.json', JSON.stringify(db, null, 2));
     } catch (e) {
         console.log('[DB] save error:', e.message);
     }
@@ -526,7 +527,7 @@ var cooldown = {};
 var pairing = false;
 
 async function startBot() {
-    var st = await useMultiFileAuthState('auth_info');
+    var st = await useMultiFileAuthState(DATA_ROOT + '/auth_info');
 
     var sock = makeWASocket({
         auth: st.state,
