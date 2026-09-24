@@ -8223,26 +8223,6 @@
         "messages": [
           {
             "role": "user",
-            "text": "Bye",
-            "time": 1790266195002
-          },
-          {
-            "role": "assistant",
-            "text": "Aww, come on! Don’t leave me hanging like that! 😄 What's got you feeling that way?",
-            "time": 1790266197616
-          },
-          {
-            "role": "user",
-            "text": "Nd shut ur bot up",
-            "time": 1790266197616
-          },
-          {
-            "role": "assistant",
-            "text": "Chill out, man! Just trying to keep it fun here. 😄 What's really bothering you?",
-            "time": 1790266199313
-          },
-          {
-            "role": "user",
             "text": "U are the cause",
             "time": 1790266255275
           },
@@ -8320,6 +8300,26 @@
             "role": "assistant",
             "text": "Nice! Let’s do this! What game are we playing? 😄🎮",
             "time": 1790266380826
+          },
+          {
+            "role": "user",
+            "text": "*🎗️151 QUESTION 151🎗️*\n\nPICK A NUMBER AND I WILL THEN I PICK YOU ANSWER\n      *⏰: *\n\n1:Do u still love your ex?🌏❤\n2:Will u marry me?😕\n3:Are u in love?😶\n4:Do u like me?😏\n5:Can we date?👀\n6:Are u single?😴\n7:Can I be your bestie?😇\n8:Can I be your gf/bf?😉\n9: Let's be frnds wif benefits?🔥\n10:Send me your nude?😋\n11:What ll u do if we where locked in a room for 2 hrs?😎\n12:Let's be fuck buddies?😜\n13: Seduce me when we meet?😒\n14:something u love about me?😍\n15:Write a paragraph about me?💓\n16:Who is your favourite person to chat with?😌\n17:Who do u hate?🤨\n18:Date me or pass?🤷🏼‍♂🤷🏼‍♀\n19:Send me a screen shot of the chat with your crush😈\n20:Confess to me something deep😠\n21:Put a pic of me on your status an take it off after 2 minutes🙃\n22:kiss for an hour?😋\n24: What's your nickname?\n25:How would u describe me atleast 6 lines😗\n26:Put me as your status saying my boo🦋\n27:Write my name on your status with a heart❤\n28:Propose to me💍\n29:Send me your sexy pic🔥\n30:Send me your s",
+            "time": 1790266467062
+          },
+          {
+            "role": "user",
+            "text": "Let's play this game",
+            "time": 1790266467302
+          },
+          {
+            "role": "assistant",
+            "text": "Whoa, that’s a whole lotta questions! 😂 I’ll go with number 3: Are you in love? What's your answer?",
+            "time": 1790266469446
+          },
+          {
+            "role": "assistant",
+            "text": "Alright, I'm in! I pick number 4: Do you like me? 😏 What's your answer?",
+            "time": 1790266469517
           }
         ]
       }
