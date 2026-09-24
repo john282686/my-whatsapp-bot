@@ -15,6 +15,7 @@ const {
     getContentType
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
+const QRCode = require('qrcode');
 const fs = require('fs');
 
 const PREFIX = '.';
@@ -122,6 +123,8 @@ function num(j) {
     return String(j).split(':')[0].split('@')[0].replace(/\D/g, '');
 }
 
+var currentQRDataUrl = null;
+var currentQRTime = 0;
 var metaCache = {};
 async function getMeta(sock, jid) {
     var c = metaCache[jid];
@@ -624,6 +627,16 @@ async function startBot() {
     sock.ev.on('creds.update', st.saveCreds);
 
     sock.ev.on('connection.update', async function (u) {
+        // [QR] capture block present
+        if (u.qr) {
+            try {
+                currentQRDataUrl = await QRCode.toDataURL(u.qr, { width: 400, margin: 2 });
+                currentQRTime = Date.now();
+                console.log('[QR] new QR ready - open your Suga URL to scan');
+            } catch (e) {
+                console.log('[QR] error: ' + e.message);
+            }
+        }
         console.log('[CONN] update: qr=' + (u.qr ? 'yes' : 'no') + ' conn=' + (u.connection || '-') + ' registered=' + sock.authState.creds.registered);
         if (u.qr && !sock.authState.creds.registered && !pairing) {
             pairing = true;
