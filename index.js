@@ -18,7 +18,7 @@ const pino = require('pino');
 const fs = require('fs');
 
 const PREFIX = '.';
-const PHONE_NUMBER = '233206391674';
+const PHONE_NUMBER = '233205347689';
 const DATA_ROOT = process.env.DATA_ROOT || '.';
 
 const KEY_POOL = {
