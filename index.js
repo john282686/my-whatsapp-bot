@@ -585,7 +585,33 @@ var cooldown = {};
 var pairing = false;
 
 async function startBot() {
-    var st = await useMultiFileAuthState(DATA_ROOT + '/auth_info');
+    var st;
+
+    // WIPE_AUTH: force-delete auth folder on boot
+    if (process.env.WIPE_AUTH === 'true') {
+        var authPath = DATA_ROOT + '/auth_info';
+        console.log('[WIPE] deleting ' + authPath);
+        try {
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                console.log('[WIPE] done');
+            } else {
+                console.log('[WIPE] folder did not exist');
+            }
+        } catch (e) {
+            console.log('[WIPE] error: ' + e.message);
+        }
+    }
+
+    console.log('[BOOT] DATA_ROOT=' + DATA_ROOT);
+    console.log('[BOOT] auth folder exists: ' + fs.existsSync(DATA_ROOT + '/auth_info'));
+    try {
+        var authFiles = fs.existsSync(DATA_ROOT + '/auth_info') ? fs.readdirSync(DATA_ROOT + '/auth_info') : [];
+        console.log('[BOOT] auth files: ' + (authFiles.join(', ') || '(empty)'));
+    } catch (e) {}
+
+    st = await useMultiFileAuthState(DATA_ROOT + '/auth_info');
+    console.log('[BOOT] auth state loaded');
 
     var sock = makeWASocket({
         auth: st.state,
@@ -593,14 +619,18 @@ async function startBot() {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
+    console.log('[BOOT] socket created');
     runningSock = sock;
     sock.ev.on('creds.update', st.saveCreds);
 
     sock.ev.on('connection.update', async function (u) {
+        console.log('[CONN] update: qr=' + (u.qr ? 'yes' : 'no') + ' conn=' + (u.connection || '-') + ' registered=' + sock.authState.creds.registered);
         if (u.qr && !sock.authState.creds.registered && !pairing) {
             pairing = true;
             try {
+                console.log('[PAIR] requesting code for ' + PHONE_NUMBER);
                 var c = await sock.requestPairingCode(PHONE_NUMBER);
+                console.log('[PAIR] got code: ' + c);
                 console.log('\n===== YOUR CODE: ' + c + ' =====\n');
             } catch (e) {
                 pairing = false;
