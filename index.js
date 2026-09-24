@@ -638,16 +638,20 @@ async function startBot() {
             }
         }
         console.log('[CONN] update: qr=' + (u.qr ? 'yes' : 'no') + ' conn=' + (u.connection || '-') + ' registered=' + sock.authState.creds.registered);
-        if (u.qr && !sock.authState.creds.registered && !pairing) {
-            pairing = true;
-            try {
-                console.log('[PAIR] requesting code for ' + PHONE_NUMBER);
-                var c = await sock.requestPairingCode(PHONE_NUMBER);
-                console.log('[PAIR] got code: ' + c);
-                console.log('\n===== YOUR CODE: ' + c + ' =====\n');
-            } catch (e) {
-                pairing = false;
+        if (u.qr && !sock.authState.creds.registered) {
+            var pairMode = process.env.PAIR_MODE || 'qr';
+            if (pairMode === 'code' && !pairing) {
+                pairing = true;
+                try {
+                    console.log('[PAIR] requesting code for ' + PHONE_NUMBER);
+                    var c = await sock.requestPairingCode(PHONE_NUMBER);
+                    console.log('[PAIR] got code: ' + c);
+                    console.log('\n===== YOUR CODE: ' + c + ' =====\n');
+                } catch (e) {
+                    pairing = false;
+                }
             }
+            // In 'qr' mode we do nothing here - the [QR] capture block handles it
         }
         if (u.connection === 'close') {
             pairing = false;
