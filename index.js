@@ -54,6 +54,7 @@ var uniqueFeatures6 = require('./unique_features6');
 var uniqueFeatures7 = require('./unique_features7');
 var uniqueFeatures8 = require('./unique_features8');
 var uniqueFeatures9 = require('./unique_features9');
+var uniqueFeatures10 = require('./unique_features10');
 var runningSock = null;
 var loreEngine = require('./lore_engine');
 
@@ -905,6 +906,7 @@ async function startBot() {
                 if (text && !text.startsWith(PREFIX) && !msg.key.fromMe) {
                     await addMem(from, sender, pn, text);
                     addGroupMessage(from, pn || '@' + sn, text);
+                    if (uniqueFeatures10.isSilent(db, from)) uniqueFeatures10.accumulateSilent(db, from, pn || ('@' + sn), text);
                     scanGroupLore(from).catch(function () {});
                     // Relationship: mentions
                     if (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.mentionedJid) {
@@ -980,6 +982,7 @@ async function startBot() {
 
                 var shouldAutoReply =
                     db.autoReply[from] !== false &&
+                    !uniqueFeatures10.isSilent(db, from) &&
                     !msg.key.fromMe &&
                     text.length > 1 &&
                     !text.startsWith(PREFIX) &&
@@ -991,7 +994,9 @@ async function startBot() {
                     if (!cooldown[sender] || now - cooldown[sender] > 15000) {
                         cooldown[sender] = now;
                         var cx = ctx(from, sender);
-                        var sp = pid ? PERSONA_PIDGIN + cx : PERSONA_EN + cx;
+                        var activeP = uniqueFeatures10.getPersona(db, from);
+                        var personaAdd = activeP ? ('\n\nPERSONA MODE: ' + activeP.name + ' \u2014 ' + uniqueFeatures10.PERSONAS[activeP.name]) : '';
+                        var sp = (pid ? PERSONA_PIDGIN + cx : PERSONA_EN + cx) + personaAdd;
                         var history = getChatHistory(from, sender);
                         var prompt =
                             (history ? 'CONTEXT (do not repeat this format):\n' + history + '\n\n' : '') +
