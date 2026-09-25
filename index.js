@@ -49,6 +49,10 @@ var uniqueFeatures2 = require('./unique_features2');
 var uniqueFeatures3 = require('./unique_features3');
 var power = require('./power_features');
 var uniqueFeatures4 = require('./unique_features4');
+var uniqueFeatures5 = require('./unique_features5');
+var uniqueFeatures6 = require('./unique_features6');
+var uniqueFeatures7 = require('./unique_features7');
+var uniqueFeatures8 = require('./unique_features8');
 var runningSock = null;
 var loreEngine = require('./lore_engine');
 
@@ -632,7 +636,9 @@ async function startBot() {
             try {
                 currentQRDataUrl = await QRCode.toDataURL(u.qr, { width: 400, margin: 2 });
                 currentQRTime = Date.now();
-                console.log('[QR] new QR ready - open your Suga URL to scan');
+                console.log('[QR] new QR ready');
+                fs.writeFileSync('./qr.html', '<html><body style="background:#111"><h2 style="color:white">Scan this QR</h2><img src="' + currentQRDataUrl + '" style="width:400px"/></body></html>');
+                console.log('[QR] saved to ./qr.html');
             } catch (e) {
                 console.log('[QR] error: ' + e.message);
             }
@@ -746,6 +752,33 @@ async function startBot() {
                 if (isDM && db.dmReplies === true) {
                     if (msg.key.fromMe) continue;
                     var dmText = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || '';
+                    if (dmText && dmText.trim().toLowerCase().indexOf('.confess') === 0) {
+                        var confText = dmText.replace(/^\.confess/i, '').trim();
+                        if (!confText) {
+                            await sock.sendMessage(from, { text: '🕯️ Usage: .confess <your confession>\nI will post it anonymously in the group.' });
+                            continue;
+                        }
+                        var targetGroup = db.confessTargets && db.confessTargets.__active;
+                        if (!targetGroup) {
+                            await sock.sendMessage(from, { text: '🕯️ No confession room is open right now.' });
+                            continue;
+                        }
+                        try {
+                            var safe = await uniqueFeatures7.rewriteConfession(askAI, confText);
+                            if (!safe || safe.trim().toUpperCase() === 'SKIP') {
+                                await sock.sendMessage(from, { text: '🕯️ This confession cannot be shared safely. Try rewording it without identifying details.' });
+                            } else {
+                                uniqueFeatures7.queueConfession(db, targetGroup, from, pn || 'Anonymous', safe);
+                                saveDBNow();
+                                await sock.sendMessage(from, { text: '🕯️ Received. Your confession is in the queue.' });
+                                console.log('[CONFESS] queued from ' + from);
+                            }
+                        } catch (e) {
+                            console.log('[CONFESS]', e.message);
+                            await sock.sendMessage(from, { text: '🕯️ Something went wrong. Try again later.' });
+                        }
+                        continue;
+                    }
                     if (dmText && dmText.length > 0) {
                         try {
                             var dmCtx = longTermMemory.recall(db, from, dmText);
@@ -789,6 +822,9 @@ async function startBot() {
 
                 var earlyBn = num(sock.user.id);
                 var earlyBl = sock.user.lid ? num(sock.user.lid) : null;
+                var earlySn = num(sender);
+                var isSenderAdmin = isAdmin(earlyMeta, sender, earlySn, earlyBn, earlyBl, msg.key.fromMe);
+                console.log('[ADMIN] sn=' + earlySn + ' isAdmin=' + isSenderAdmin);
                 if (!isBotAdmin(earlyMeta, earlyBn, earlyBl)) {
                     console.log('[SKIP] bot not admin in ' + from);
                     continue;
@@ -798,7 +834,7 @@ async function startBot() {
                 if (processedMsgs[msgId]) continue;
                 processedMsgs[msgId] = Date.now();
 
-                if (!msg.key.fromMe) {
+                if (!msg.key.fromMe && !isSenderAdmin) {
                     var fastText = text;
                     if (
                         msg.message.extendedTextMessage &&
@@ -821,15 +857,17 @@ async function startBot() {
                 var mt = getContentType(msg.message);
                 if (!botA) continue;
 
-                var wasFwd = await deleteForwardedMessage(sock, msg, from);
-                if (wasFwd) continue;
+                if (!isSenderAdmin) {
+                    var wasFwd = await deleteForwardedMessage(sock, msg, from);
+                    if (wasFwd) continue;
+                }
 
                 if (!msg.key.fromMe && text) {
                     advanced.track(db, from, sender, 'message');
                     saveDB();
                 }
 
-                if (!msg.key.fromMe) {
+                if (!msg.key.fromMe && !isSenderAdmin) {
                     if (mt === 'groupInviteMessage') {
                         await delWarn(sock, from, msg, sender, 'Group invites not allowed');
                         continue;
@@ -1722,6 +1760,253 @@ async function startBot() {
                 } else if (cmd === 'dmstatus') {
                     var dmState = db.dmReplies === false ? 'OFF' : 'ON';
                     await sock.sendMessage(from, { text: '\uD83D\uDCE8 DM replies are *' + dmState + '*' }, { quoted: msg });
+                } else if (cmd === 'multiverse' || cmd === 'mv') {
+                    var mvScenario = args.join(' ').trim();
+                    if (!mvScenario) {
+                        await sock.sendMessage(from, { text: 'Usage: ' + PREFIX + 'multiverse <scenario>\nExample: ' + PREFIX + 'multiverse we are all on a pirate ship' }, { quoted: msg });
+                    } else {
+                        var mvCtx = recentGroupContext(from, 40);
+                        if (!mvCtx) {
+                            await sock.sendMessage(from, { text: '\uD83C\uDF0C Need more chat first.' }, { quoted: msg });
+                        } else {
+                            var mvMembers = meta.participants ? meta.participants.slice(0, 15).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                            await sock.sendMessage(from, { text: '\uD83C\uDF0C Entering parallel universe...' }, { quoted: msg });
+                            var mvOut = await uniqueFeatures5.multiverse(askAI, mvCtx, mvMembers, mvScenario);
+                            if (mvOut) await sock.sendMessage(from, { text: '\uD83C\uDF0C *MULTIVERSE: ' + mvScenario + '*\n\n' + mvOut }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'detective') {
+                    var detKw = args.join(' ').trim();
+                    if (!detKw) {
+                        await sock.sendMessage(from, { text: 'Usage: ' + PREFIX + 'detective <topic>' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83D\uDD0D Investigating...' }, { quoted: msg });
+                        var detResult = await uniqueFeatures5.detective(askAI, db, from, detKw);
+                        if (!detResult) {
+                            await sock.sendMessage(from, { text: '\uD83D\uDD0D No trace of "' + detKw + '" in the case files.' }, { quoted: msg });
+                        } else {
+                            var detOut = detResult.narrative || ('\uD83D\uDD0D Found ' + detResult.found.total + ' mentions. First by ' + detResult.found.firstBy + ' on ' + new Date(detResult.found.firstAt).toLocaleString());
+                            await sock.sendMessage(from, { text: detOut }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'oracle') {
+                    var oCtx = recentGroupContext(from, 50);
+                    if (!oCtx || oCtx.length < 80) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDD2E The Oracle needs more context.' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83D\uDD2E The Oracle is watching...' }, { quoted: msg });
+                        var oMembers = meta.participants ? meta.participants.slice(0, 15).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                        var oRaw = await uniqueFeatures5.oracleNewPrediction(askAI, oCtx, oMembers);
+                        if (oRaw) {
+                            var oText = oRaw;
+                            var oConf = 50;
+                            var cm = oRaw.match(/CONFIDENCE:\s*(\d+)/i);
+                            if (cm) oConf = parseInt(cm[1], 10);
+                            var pm = oRaw.match(/PREDICTION:\s*(.+)/i);
+                            if (pm) oText = pm[1].trim();
+                            var rm = oRaw.match(/REASON:\s*(.+)/i);
+                            var oReason = rm ? rm[1].trim() : '';
+                            uniqueFeatures5.saveOracle(db, from, oText, oConf);
+                            saveDBNow();
+                            var oReply = '\uD83D\uDD2E *THE ORACLE SPEAKS*\n\n' + oText + '\n_Confidence:_ ' + oConf + '%';
+                            if (oReason) oReply += '\n_Reason:_ ' + oReason;
+                            await sock.sendMessage(from, { text: oReply }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'oraclescore' || cmd === 'oscore') {
+                    var osc = uniqueFeatures5.oracleScoreboard(db, from);
+                    var osOut = '\uD83D\uDD2E *ORACLE SCOREBOARD*\n\n';
+                    osOut += 'Accuracy: *' + osc.accuracy + '%*\n';
+                    osOut += 'Wins: ' + osc.hits + ' | Losses: ' + osc.misses + ' | Open: ' + osc.open + '\n';
+                    osOut += 'Total predictions: ' + osc.total;
+                    await sock.sendMessage(from, { text: osOut }, { quoted: msg });
+                } else if (cmd === 'oracleresolve' || cmd === 'oresolve') {
+                    if (!isA) continue;
+                    var orCtx = recentGroupContext(from, 60);
+                    if (!orCtx || orCtx.length < 100) {
+                        await sock.sendMessage(from, { text: 'Need more context.' });
+                    } else {
+                        var orUpdates = await uniqueFeatures5.oracleResolve(askAI, db, from, orCtx);
+                        saveDBNow();
+                        if (!orUpdates.length) {
+                            await sock.sendMessage(from, { text: 'No oracle predictions resolved this round.' });
+                        } else {
+                            var orOut = '\uD83D\uDD2E *ORACLE VERDICT*\n\n';
+                            orUpdates.forEach(function(u){
+                                var ic = u.status === 'hit' ? '\u2705' : '\u274C';
+                                orOut += ic + ' "' + u.text.substring(0, 90) + '"\n   _' + (u.reason || '') + '_\n';
+                            });
+                            await sock.sendMessage(from, { text: orOut });
+                        }
+                    }
+                } else if (cmd === 'anomaly' || cmd === 'anomalies') {
+                    var an = uniqueFeatures5.anomalyScan(db, from);
+                    if (an.reason) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDEA8 ' + an.reason }, { quoted: msg });
+                    } else if (!an.anomalies || !an.anomalies.length) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDEA8 Everything normal. Recent: ' + an.recentHour + ' msgs/hr (avg ' + an.avgPerHour + ').' }, { quoted: msg });
+                    } else {
+                        var anNarr = await uniqueFeatures5.anomalyNarrative(askAI, an.anomalies);
+                        await sock.sendMessage(from, { text: anNarr || '\uD83D\uDEA8 Anomalies detected.' }, { quoted: msg });
+                    }
+                } else if (cmd === 'autobiography' || cmd === 'auto') {
+                    var auCtx2 = recentGroupContext(from, 80);
+                    if (!auCtx2 || auCtx2.length < 100) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDCD6 Not enough content yet.' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83D\uDCD6 Writing this chapter...' }, { quoted: msg });
+                        if (!db.groupAutobiography[from]) db.groupAutobiography[from] = { chapters: [] };
+                        var prevSummary = db.groupAutobiography[from].chapters.slice(-1).map(function(c){ return c.text.substring(0, 400); }).join(' ');
+                        var monthLabel = new Date().toLocaleString('en', { month: 'long', year: 'numeric' });
+                        var chOut = await uniqueFeatures5.autobiographyChapter(askAI, auCtx2, meta.subject || 'this group', prevSummary, monthLabel);
+                        if (chOut) {
+                            db.groupAutobiography[from].chapters.push({
+                                month: monthLabel,
+                                text: chOut,
+                                createdAt: Date.now()
+                            });
+                            saveDBNow();
+                            await sock.sendMessage(from, { text: '\uD83D\uDCD6 *CHAPTER: ' + monthLabel + '*\n\n' + chOut }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'chapters') {
+                    var chaps = (db.groupAutobiography && db.groupAutobiography[from] && db.groupAutobiography[from].chapters) || [];
+                    if (!chaps.length) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDCD6 No chapters yet. Run ' + PREFIX + 'autobiography first.' });
+                    } else {
+                        var chList = '\uD83D\uDCD6 *AUTOBIOGRAPHY CHAPTERS*\n\n';
+                        chaps.forEach(function(c, i){
+                            chList += (i+1) + '. ' + c.month + ' \u2014 ' + new Date(c.createdAt).toLocaleDateString() + '\n';
+                        });
+                        await sock.sendMessage(from, { text: chList });
+                    }
+                } else if (cmd === 'chorus') {
+                    var chTopic = args.join(' ').trim() || 'the state of this group';
+                    var chCtx = recentGroupContext(from, 50);
+                    await sock.sendMessage(from, { text: '\uD83C\uDFAD The Chorus is gathering...' }, { quoted: msg });
+                    var chOut = await uniqueFeatures6.chorus(askAI, chTopic, chCtx);
+                    if (chOut) {
+                        var chPretty = '\uD83C\uDFAD *CHORUS: ' + chTopic + '*\n\n' + chOut;
+                        await sock.sendMessage(from, { text: chPretty }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83C\uDFAD The Chorus fell silent.' }, { quoted: msg });
+                    }
+                } else if (cmd === 'rhythm') {
+                    var rh = uniqueFeatures6.rhythm(db, from);
+                    await sock.sendMessage(from, { text: uniqueFeatures6.rhythmArt(rh) }, { quoted: msg });
+                } else if (cmd === 'weave') {
+                    var wvArr = groupBrain(from);
+                    if (!wvArr || wvArr.length < 10) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDD78 Need at least 10 recorded messages.' }, { quoted: msg });
+                    } else {
+                        var wvShuf = wvArr.slice().sort(function(){ return Math.random() - 0.5; });
+                        var wvPick = wvShuf.slice(0, 3);
+                        await sock.sendMessage(from, { text: '\uD83D\uDD78 Weaving three random moments...' }, { quoted: msg });
+                        var wvOut = await uniqueFeatures6.weave(askAI, wvPick);
+                        if (wvOut) await sock.sendMessage(from, { text: wvOut }, { quoted: msg });
+                    }
+                } else if (cmd === 'remix') {
+                    var rmStyle = args.join(' ').trim();
+                    if (!rmStyle) {
+                        await sock.sendMessage(from, { text: 'Usage: ' + PREFIX + 'remix <style>\nExamples: shakespeare, cyberpunk noir, disney musical, ancient rome' }, { quoted: msg });
+                    } else {
+                        var rmCtx = recentGroupContext(from, 40);
+                        if (!rmCtx) {
+                            await sock.sendMessage(from, { text: '\uD83C\uDFAD Need more recent chat.' }, { quoted: msg });
+                        } else {
+                            await sock.sendMessage(from, { text: '\uD83C\uDFAD Remixing in style: ' + rmStyle + '...' }, { quoted: msg });
+                            var rmOut = await uniqueFeatures6.remix(askAI, rmCtx, rmStyle);
+                            if (rmOut) await sock.sendMessage(from, { text: rmOut }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'deeptime' || cmd === 'dt') {
+                    var dtCtx = recentGroupContext(from, 60);
+                    if (!dtCtx || dtCtx.length < 80) {
+                        await sock.sendMessage(from, { text: '\uD83C\uDFDB Need more material to excavate.' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83C\uDFDB Excavating...' }, { quoted: msg });
+                        var dtOut = await uniqueFeatures6.deepTime(askAI, dtCtx, meta.subject || 'this group');
+                        if (dtOut) await sock.sendMessage(from, { text: dtOut }, { quoted: msg });
+                    }
+                } else if (cmd === 'unsaid') {
+                    var unCtx = recentGroupContext(from, 60);
+                    if (!unCtx || unCtx.length < 100) {
+                        await sock.sendMessage(from, { text: '\uD83E\uDEE5 Need more chat to read between the lines.' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83E\uDEE5 Reading the subtext...' }, { quoted: msg });
+                        var unMembers = meta.participants ? meta.participants.slice(0, 20).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                        var unOut = await uniqueFeatures7.unsaid(askAI, unCtx, unMembers);
+                        if (unOut) await sock.sendMessage(from, { text: unOut }, { quoted: msg });
+                    }
+                } else if (cmd === 'mirrorball' || cmd === 'mb') {
+                    var mbText = '';
+                    if (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo && msg.message.extendedTextMessage.contextInfo.quotedMessage) {
+                        var qm = msg.message.extendedTextMessage.contextInfo.quotedMessage;
+                        mbText = qm.conversation || (qm.extendedTextMessage && qm.extendedTextMessage.text) || '';
+                    }
+                    if (!mbText) mbText = args.join(' ').trim();
+                    if (!mbText) {
+                        await sock.sendMessage(from, { text: 'Usage: ' + PREFIX + 'mirrorball (reply to a message) or ' + PREFIX + 'mirrorball <text>' }, { quoted: msg });
+                    } else {
+                        var mbPeople = meta.participants ? meta.participants.slice(0, 20).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                        await sock.sendMessage(from, { text: '\uD83E\uDE9E The mirror is spinning...' }, { quoted: msg });
+                        var mbOut = await uniqueFeatures7.mirrorBall(askAI, mbText, mbPeople);
+                        if (mbOut) await sock.sendMessage(from, { text: mbOut }, { quoted: msg });
+                    }
+                } else if (cmd === 'secondlife' || cmd === '2life') {
+                    var slCtx = recentGroupContext(from, 50);
+                    if (!slCtx || slCtx.length < 80) {
+                        await sock.sendMessage(from, { text: '\uD83C\uDF06 Need more chat to build a world.' }, { quoted: msg });
+                    } else {
+                        await sock.sendMessage(from, { text: '\uD83C\uDF06 Building the next generation...' }, { quoted: msg });
+                        if (!db.groupSecondLife) db.groupSecondLife = {};
+                        var slPrev = db.groupSecondLife[from] || null;
+                        var slMembers = meta.participants ? meta.participants.slice(0, 20).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                        var slWorld = await uniqueFeatures7.secondLife(askAI, slCtx, slMembers, slPrev);
+                        if (slWorld) {
+                            db.groupSecondLife[from] = slWorld;
+                            saveDBNow();
+                            await sock.sendMessage(from, { text: uniqueFeatures7.renderSecondLife(slWorld) }, { quoted: msg });
+                        } else {
+                            await sock.sendMessage(from, { text: '\uD83C\uDF06 World generation failed.' }, { quoted: msg });
+                        }
+                    }
+                } else if (cmd === 'coldopen' || cmd === 'co') {
+                    var coCtx = recentGroupContext(from, 50);
+                    if (!coCtx || coCtx.length < 60) {
+                        await sock.sendMessage(from, { text: '\uD83D\uDCFA Need more chat for a scene.' }, { quoted: msg });
+                    } else {
+                        var coCast = meta.participants ? meta.participants.slice(0, 20).map(function(p){ return p.notify || ('@' + num(p.id)); }) : [];
+                        var coOut = await uniqueFeatures7.coldOpen(askAI, coCtx, meta.subject || 'this group', coCast);
+                        if (coOut) await sock.sendMessage(from, { text: coOut }, { quoted: msg });
+                    }
+                } else if (cmd === 'confessroom') {
+                    if (!isA) continue;
+                    if (!db.confessTargets) db.confessTargets = {};
+                    if (args[0] === 'on') {
+                        db.confessTargets.__active = from;
+                        saveDBNow();
+                        await sock.sendMessage(from, { text: '🕯️ Confession room OPEN.\nMembers can DM the bot with: .confess <text>\nPost confessions with: ' + PREFIX + 'revealconfession' }, { quoted: msg });
+                    } else if (args[0] === 'off') {
+                        if (db.confessTargets.__active === from) delete db.confessTargets.__active;
+                        saveDBNow();
+                        await sock.sendMessage(from, { text: '🕯️ Confession room CLOSED.' }, { quoted: msg });
+                    } else {
+                        var active = db.confessTargets.__active === from ? 'ON' : 'OFF';
+                        await sock.sendMessage(from, { text: '🕯️ Confession room: *' + active + '*\nUsage: ' + PREFIX + 'confessroom on/off' }, { quoted: msg });
+                    }
+                } else if (cmd === 'revealconfession' || cmd === 'rc') {
+                    if (!isA) continue;
+                    var conf = uniqueFeatures7.pickConfession(db, from);
+                    if (!conf) {
+                        await sock.sendMessage(from, { text: '🕯️ No confessions in the queue.' }, { quoted: msg });
+                    } else {
+                        var confOut = '🕯️ *ANONYMOUS CONFESSION*\n\n"' + conf.text + '"\n\n_Submitted anonymously._';
+                        await sock.sendMessage(from, { text: confOut });
+                        var arr = db.confessions[from] || [];
+                        db.confessions[from] = arr.filter(function(c){ return c.id !== conf.id; });
+                        saveDBNow();
+                    }
                 } else if (cmd === 'aboutme') {
                     var ltmUser = longTermMemory.getUser(db, sender);
                     var aboutOut = '📌 *LONG-TERM MEMORY*\n\n';

@@ -4074,6 +4074,16 @@
         "summaries": [],
         "firstSeen": 1790265193721,
         "lastSeen": 1790265234304
+      },
+      "238861183668225@lid": {
+        "name": "B.B.9",
+        "count": 1,
+        "recent": [
+          "Link.com"
+        ],
+        "summaries": [],
+        "firstSeen": 1790298207590,
+        "lastSeen": 1790298207590
       }
     }
   },
@@ -8056,6 +8066,16 @@
             "time": 1790265236398
           }
         ]
+      },
+      "238861183668225@lid": {
+        "name": "B.B.9",
+        "messages": [
+          {
+            "role": "user",
+            "text": "Link.com",
+            "time": 1790298207604
+          }
+        ]
       }
     },
     "120363429081266204@newsletter": {
@@ -9217,6 +9237,11 @@
         "name": "Yiu",
         "text": "Bot <delete>",
         "time": 1790265234304
+      },
+      {
+        "name": "B.B.9",
+        "text": "Link.com",
+        "time": 1790298207590
       }
     ],
     "120363406532150365@g.us": [
@@ -9387,10 +9412,10 @@
       "lastActivity": 1790264779501
     },
     "120363430902207234@g.us": {
-      "messages": 104,
+      "messages": 109,
       "games": 0,
       "roasts": 0,
-      "lastActivity": 1790265234304
+      "lastActivity": 1790298226121
     }
   },
   "userProfiles": {
@@ -9954,6 +9979,16 @@
         "level": 1,
         "firstSeen": 1790265193721,
         "lastSeen": 1790265234304
+      },
+      "238861183668225@lid": {
+        "messages": 5,
+        "commands": 4,
+        "games": 0,
+        "roasts": 0,
+        "xp": 5,
+        "level": 1,
+        "firstSeen": 1790296414844,
+        "lastSeen": 1790298226121
       }
     }
   },
@@ -9962,7 +9997,7 @@
     "120363409004234208@g.us": "comedy"
   },
   "loreScan": {
-    "120363430902207234@g.us": 1790264660417,
+    "120363430902207234@g.us": 1790298207591,
     "120363428255332163@g.us": 1790264258649,
     "120363409004234208@g.us": 1790265672134
   },
@@ -12953,6 +12988,13 @@
           "category": "summary",
           "added": 1790248587270,
           "weight": 0.5
+        },
+        {
+          "id": "mug823rkmb2l",
+          "text": "This WhatsApp user is enthusiastic about engaging with others and seems to value clear communication, as shown by their repeated requests for country flags. They exhibit some skepticism toward AI, suggesting they prefer authentic interactions over automated responses.",
+          "category": "summary",
+          "added": 1790296074128,
+          "weight": 0.5
         }
       ],
       "groups": [
@@ -12993,7 +13035,15 @@
       "jid": "56934640177235@lid",
       "name": "Ajaykmuar🫂❤️‍🩹💔",
       "aliases": [],
-      "facts": [],
+      "facts": [
+        {
+          "id": "mug823rks9g3",
+          "text": "This WhatsApp user seems to be playful and sociable, enjoying humor and light-hearted banter with friends. They are likely interested in music and videos, and prefer communicating in Hindi.",
+          "category": "summary",
+          "added": 1790296074128,
+          "weight": 0.5
+        }
+      ],
       "groups": [
         "120363428255332163@g.us"
       ],
@@ -13064,6 +13114,19 @@
       ],
       "firstSeen": 1790265868851,
       "lastSeen": 1790265868851,
+      "totalMessages": 1,
+      "lastConsolidated": 0
+    },
+    "238861183668225@lid": {
+      "jid": "238861183668225@lid",
+      "name": "B.B.9",
+      "aliases": [],
+      "facts": [],
+      "groups": [
+        "120363430902207234@g.us"
+      ],
+      "firstSeen": 1790298207599,
+      "lastSeen": 1790298207600,
       "totalMessages": 1,
       "lastConsolidated": 0
     }
@@ -13719,6 +13782,13 @@
         "time": 1790265868851,
         "name": "Kalimba"
       }
+    ],
+    "238861183668225@lid": [
+      {
+        "text": "Link.com",
+        "time": 1790298207600,
+        "name": "B.B.9"
+      }
     ]
   },
   "timeCapsules": [
@@ -13898,6 +13968,7 @@
   "guardianLog": {},
   "guardianCooldown": {},
   "predictionLedger": {},
+  "dmReplies": false,
   "games": {},
   "memberProfiles": {}
 }
