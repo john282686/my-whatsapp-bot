@@ -250,6 +250,28 @@ function rememberChat(groupId, senderId, senderName, role, text) {
         if (h.messages.length > 20) h.messages = h.messages.slice(-20);
         saveDB();
     } catch (e) {}
+
+// ---- SAFETY NET ---- ensure every expected top-level key exists
+var __DEFAULTS = {
+    warnings: {}, welcomeSettings: {}, protectedGroups: {},
+    xp: {}, afk: {}, autoReply: {}, memory: {}, chatHistory: {}, groupChat: {},
+    groupLore: {}, groupStats: {}, userProfiles: {}, groupModes: {}, loreScan: {},
+    longTermMemory: {}, ltmInbox: {}, timeCapsules: [],
+    groupDNA: {}, relationshipGraph: {}, guardianLog: {}, guardianCooldown: {},
+    predictionLedger: {}, dmReplies: true,
+    groupAutobiography: {}, oraclePredictions: {}, oracleScore: { hits: 0, misses: 0 },
+    chorusHistory: {}, deepTimeArchive: {},
+    confessions: {}, confessTargets: {}, groupSecondLife: {},
+    cultureVault: {}, matchSuggestions: {}, weeklyReplayLast: {}, ghostAlerts: {},
+    healthPulse: {}, moodTide: {}, trendHistory: {}, adminBriefLast: {},
+    silentMode: {}, silentAccum: {}, activePersona: {}, selfAuditLog: [],
+    groupOracle: {}, timeBank: {}, livingArchive: {}, socialPhysics: {}, interventions: {},
+    groupNovel: {}, memoryLeaks: {}, foundersArchive: {}, deepMirror: {}, watcherArchive: {},
+    stockMarket: {}, futureLetters: [], reversePolls: {}, anthropologist: {}
+};
+Object.keys(__DEFAULTS).forEach(function (k) {
+    if (db[k] === undefined || db[k] === null) db[k] = __DEFAULTS[k];
+});
 }
 
 function getChatHistory(groupId, senderId) {
