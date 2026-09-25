@@ -27,16 +27,16 @@ const KEY_POOL = {
         process.env.GROQ_KEY || ''
     ],
     cerebras: [
-        process.env.CEREBRAS_KEY_1 || '',
-        process.env.CEREBRAS_KEY_2 || '',
-        process.env.CEREBRAS_KEY_3 || '',
-        process.env.CEREBRAS_KEY_4 || ''
+        process.env.CEREBRAS_KEY_1 || 'csk-52h4rk6ydh4v56686639tjceew8fxdkf86hnftj4hrtyrhm8',
+        process.env.CEREBRAS_KEY_2 || 'csk-5vcm33dy8j22h6nvctdh955nrjfw3r9ywvdht56vd2h3h9tj',
+        process.env.CEREBRAS_KEY_3 || 'csk-vrh9ejk64x3ew543j9fmt3e2p9994hj6rndyyxfk8dpne2k8',
+        process.env.CEREBRAS_KEY_4 || 'csk-nk93epc52xwcdydrfyp9mtt5xxcvrp9tvhy9nkh4cv5995ft'
     ],
     cohere: [
-        process.env.COHERE_KEY || ''
+        process.env.COHERE_KEY || 'HfMGRCKMGIPxQG4N9HkFDtPlIC3CgRtYTEIcahL0'
     ],
     mistral: [
-        process.env.MISTRAL_KEY || ''
+        process.env.MISTRAL_KEY || 'E9aM3y19VUURljIOMJcAED157M9BNZPY'
     ]
 };
 
@@ -95,6 +95,29 @@ try {
 } catch (e) {
     console.log('[DB] load error:', e.message);
 }
+
+// ==== LATE DEFAULTS (fills any db key the JSON load left missing) ====
+var __LATE_DEFAULTS = {
+    warnings: {}, welcomeSettings: {}, protectedGroups: {},
+    xp: {}, afk: {}, autoReply: {}, memory: {}, chatHistory: {}, groupChat: {},
+    groupLore: {}, groupStats: {}, userProfiles: {}, groupModes: {}, loreScan: {},
+    longTermMemory: {}, ltmInbox: {}, timeCapsules: [],
+    groupDNA: {}, relationshipGraph: {}, guardianLog: {}, guardianCooldown: {},
+    predictionLedger: {}, dmReplies: true,
+    groupAutobiography: {}, oraclePredictions: {}, oracleScore: { hits: 0, misses: 0 },
+    chorusHistory: {}, deepTimeArchive: {},
+    confessions: {}, confessTargets: {}, groupSecondLife: {},
+    cultureVault: {}, matchSuggestions: {}, weeklyReplayLast: {}, ghostAlerts: {},
+    healthPulse: {}, moodTide: {}, trendHistory: {}, adminBriefLast: {},
+    silentMode: {}, silentAccum: {}, activePersona: {}, selfAuditLog: [],
+    groupOracle: {}, timeBank: {}, livingArchive: {}, socialPhysics: {}, interventions: {},
+    groupNovel: {}, memoryLeaks: {}, foundersArchive: {}, deepMirror: {}, watcherArchive: {},
+    stockMarket: {}, futureLetters: [], reversePolls: {}, anthropologist: {}
+};
+Object.keys(__LATE_DEFAULTS).forEach(function (k) {
+    if (db[k] === undefined || db[k] === null) db[k] = __LATE_DEFAULTS[k];
+});
+// ==== END LATE DEFAULTS ====
 
 advanced.ensure(db);
 memberProfiles.ensure(db);
@@ -424,6 +447,7 @@ async function deleteForwardedMessage(sock, msg, from) {
 }
 
 async function askAI(q, opts) {
+    // PUTER_PRIMARY: try local Puter first
     opts = opts || {};
 
     var rules =
@@ -433,7 +457,7 @@ async function askAI(q, opts) {
         '- Do NOT repeat an answer or use nearly identical wording.\n' +
         '- Respond directly to what the person just said.\n' +
         '- Keep replies SHORT (1-2 sentences).\n' +
-        '- NEVER start your reply with a label (no You:, Person:, me:, them:, Chidi:).\n';
+        '- NEVER start your reply with a label.\n';
 
     var sp = (opts.systemPrompt || '') + rules;
 
@@ -453,14 +477,37 @@ async function askAI(q, opts) {
     if (sp) messages.push({ role: 'system', content: sp });
     messages.push({ role: 'user', content: q });
 
-    // 1. Groq
+    // Try Puter first
+    var models = ['openai', 'mistral', 'llama'];
+    for (var i = 0; i < models.length; i++) {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 15000);
+        try {
+            var r = await fetch('https://text.pollinations.ai/openai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: models[i], messages: messages, max_tokens: 250, temperature: 1.0 }),
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            var d = await r.json();
+            if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                console.log('[AI] OK via Pollinations/' + models[i]);
+                return d.choices[0].message.content;
+            }
+        } catch (e) {
+            clearTimeout(timer);
+        }
+    }
+
+    // Fallback: Groq
     for (var g = 0; g < KEY_POOL.groq.length; g++) {
         if (!KEY_POOL.groq[g]) continue;
         try {
             var rG = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.groq[g], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: messages, max_tokens: 300, temperature: 0.9 })
+                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: messages, max_tokens: 250, temperature: 0.9 })
             });
             var dG = await rG.json();
             if (dG.choices && dG.choices[0] && dG.choices[0].message && dG.choices[0].message.content) {
@@ -471,7 +518,7 @@ async function askAI(q, opts) {
         } catch (e) { console.log('[AI] Groq:', e.message); }
     }
 
-    // 2. Cerebras (4 keys, try each)
+    // Fallback: Cerebras
     var cModels = ['llama-3.3-70b', 'llama3.1-8b'];
     for (var c = 0; c < KEY_POOL.cerebras.length; c++) {
         if (!KEY_POOL.cerebras[c]) continue;
@@ -480,52 +527,49 @@ async function askAI(q, opts) {
                 var rC = await fetch('https://api.cerebras.ai/v1/chat/completions', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + KEY_POOL.cerebras[c], 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: cModels[cm], messages: messages, max_tokens: 300, temperature: 0.9 })
+                    body: JSON.stringify({ model: cModels[cm], messages: messages, max_tokens: 250, temperature: 0.9 })
                 });
                 var dC = await rC.json();
                 if (dC.choices && dC.choices[0] && dC.choices[0].message && dC.choices[0].message.content) {
-                    console.log('[AI] OK via Cerebras key#' + c);
+                    console.log('[AI] OK via Cerebras');
                     return dC.choices[0].message.content;
                 }
-                if (dC.error) console.log('[AI] Cerebras err:', JSON.stringify(dC.error).substring(0, 120));
-            } catch (e) { console.log('[AI] Cerebras:', e.message); }
+            } catch (e) {}
         }
     }
 
-    // 3. Mistral
+    // Fallback: Mistral
     for (var m = 0; m < KEY_POOL.mistral.length; m++) {
         if (!KEY_POOL.mistral[m]) continue;
         try {
             var rM = await fetch('https://api.mistral.ai/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.mistral[m], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'mistral-small-latest', messages: messages, max_tokens: 300, temperature: 0.9 })
+                body: JSON.stringify({ model: 'mistral-small-latest', messages: messages, max_tokens: 250, temperature: 0.9 })
             });
             var dM = await rM.json();
             if (dM.choices && dM.choices[0] && dM.choices[0].message && dM.choices[0].message.content) {
                 console.log('[AI] OK via Mistral');
                 return dM.choices[0].message.content;
             }
-            if (dM.error) console.log('[AI] Mistral err:', JSON.stringify(dM.error).substring(0, 120));
-        } catch (e) { console.log('[AI] Mistral:', e.message); }
+        } catch (e) {}
     }
 
-    // 4. Cohere
+    // Fallback: Cohere
     for (var co = 0; co < KEY_POOL.cohere.length; co++) {
         if (!KEY_POOL.cohere[co]) continue;
         try {
             var rCo = await fetch('https://api.cohere.com/v2/chat', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.cohere[co], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'command-r-08-2024', messages: messages, max_tokens: 300 })
+                body: JSON.stringify({ model: 'command-r-08-2024', messages: messages, max_tokens: 250 })
             });
             var dCo = await rCo.json();
             if (dCo.message && dCo.message.content && dCo.message.content[0] && dCo.message.content[0].text) {
                 console.log('[AI] OK via Cohere');
                 return dCo.message.content[0].text;
             }
-            if (dCo.error) console.log('[AI] Cohere err:', JSON.stringify(dCo.error).substring(0, 120));
-        } catch (e) { console.log('[AI] Cohere:', e.message); }
+        } catch (e) {}
     }
 
     console.log('[AI] ALL PROVIDERS FAILED');
@@ -1010,24 +1054,29 @@ async function startBot() {
                 var isReplyToHuman = quotedParticipant && !isReplyToBot;
                 var startsWithMention = /^(@|>)/.test(text.trim());
 
-                var shortTrigger = /^(hi|hey|hello|yo|sup|wassup|what's up|good (morning|afternoon|evening|night)|how (are|you)|wyd|hru|gm|gn)\b/i;
+                // Bot only replies when directly addressed:
+                //  - reply to a bot message, OR
+                //  - message contains "@bot" (handled separately below)
+                var looksDirectedAtBot = isReplyToBot;
 
-                var looksDirectedAtBot =
-                    isReplyToBot ||
-                    shortTrigger.test(text.trim()) ||
-                    (text.length >= 4 &&
-                        !hasOtherTag &&
-                        !isReplyToHuman &&
-                        !startsWithMention);
+                // Optional: uncomment the next line if you want @bot mentions
+                // to also trigger auto-reply. Currently handled by the @bot block.
+                if (text.toLowerCase().indexOf('@bot') !== -1) looksDirectedAtBot = true;
+
+                // Bot replies to GENERAL messages (group-wide) but NOT to
+                // messages directed at a specific person.
+                var isGeneralMessage =
+                    !hasOtherTag &&           // no @mentions in the message
+                    !isReplyToHuman &&        // not a reply to another member
+                    !startsWithMention;       // does not start with @ or >
 
                 var shouldAutoReply =
                     db.autoReply[from] !== false &&
-                    !uniqueFeatures10.isSilent(db, from) &&
                     !msg.key.fromMe &&
                     text.length > 1 &&
                     !text.startsWith(PREFIX) &&
                     text.indexOf('@bot') === -1 &&
-                    looksDirectedAtBot;
+                    (isReplyToBot || isGeneralMessage);
 
                 if (shouldAutoReply) {
                     var now = Date.now();
