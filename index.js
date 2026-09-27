@@ -58,6 +58,8 @@ var uniqueFeatures10 = require('./unique_features10');
 var uniqueFeatures11 = require('./unique_features11');
 var uniqueFeatures12 = require('./unique_features12');
 var uniqueFeatures13 = require('./unique_features13');
+var featureForge = require('./feature_forge');
+var quickReplyLib = require('./quick_reply');
 var runningSock = null;
 var loreEngine = require('./lore_engine');
 
@@ -446,7 +448,18 @@ async function deleteForwardedMessage(sock, msg, from) {
     }
 }
 
-async function askAI(q, opts) {
+// ==== AI REQUEST QUEUE ====
+// Only one AI call at a time to avoid Pollinations concurrent-request rejections
+var __lastAIError = null;
+var __aiQueue = Promise.resolve();
+function __enqueueAI(fn) {
+    var next = __aiQueue.then(fn, fn);
+    __aiQueue = next.catch(function () {});
+    return next;
+}
+// ==== END QUEUE ====
+
+async function __askAI_inner(q, opts) {
     // PUTER_PRIMARY: try local Puter first
     opts = opts || {};
 
@@ -478,26 +491,24 @@ async function askAI(q, opts) {
     messages.push({ role: 'user', content: q });
 
     // Try Puter first
-    var models = ['openai', 'mistral', 'llama'];
+    var models = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet'];
     for (var i = 0; i < models.length; i++) {
         var ctrl = new AbortController();
-        var timer = setTimeout(function () { ctrl.abort(); }, 15000);
+        var timer = setTimeout(function () { ctrl.abort(); }, 35000);
         try {
-            var r = await fetch('https://text.pollinations.ai/openai', {
+            var r = await fetch('http://127.0.0.1:8081/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: models[i], messages: messages, max_tokens: 250, temperature: 1.0 }),
+                body: JSON.stringify({ model: models[i], messages: messages, max_tokens: 80, temperature: 1.0 }),
                 signal: ctrl.signal
             });
             clearTimeout(timer);
             var d = await r.json();
             if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
-                console.log('[AI] OK via Pollinations/' + models[i]);
+                console.log('[AI] OK via HackClub/' + models[i]);
                 return d.choices[0].message.content;
             }
-        } catch (e) {
-            clearTimeout(timer);
-        }
+        } catch (e) { clearTimeout(timer); __lastAIError = 'Pollinations ' + models[i] + ': ' + (e.name === 'AbortError' ? 'TIMEOUT' : e.message); console.log('[AI] Pollinations ' + models[i] + ':', e.name === 'AbortError' ? 'TIMEOUT' : e.message); }
     }
 
     // Fallback: Groq
@@ -507,7 +518,7 @@ async function askAI(q, opts) {
             var rG = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.groq[g], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: messages, max_tokens: 250, temperature: 0.9 })
+                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: messages, max_tokens: 80, temperature: 0.9 })
             });
             var dG = await rG.json();
             if (dG.choices && dG.choices[0] && dG.choices[0].message && dG.choices[0].message.content) {
@@ -527,7 +538,7 @@ async function askAI(q, opts) {
                 var rC = await fetch('https://api.cerebras.ai/v1/chat/completions', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + KEY_POOL.cerebras[c], 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: cModels[cm], messages: messages, max_tokens: 250, temperature: 0.9 })
+                    body: JSON.stringify({ model: cModels[cm], messages: messages, max_tokens: 80, temperature: 0.9 })
                 });
                 var dC = await rC.json();
                 if (dC.choices && dC.choices[0] && dC.choices[0].message && dC.choices[0].message.content) {
@@ -545,7 +556,7 @@ async function askAI(q, opts) {
             var rM = await fetch('https://api.mistral.ai/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.mistral[m], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'mistral-small-latest', messages: messages, max_tokens: 250, temperature: 0.9 })
+                body: JSON.stringify({ model: 'mistral-small-latest', messages: messages, max_tokens: 80, temperature: 0.9 })
             });
             var dM = await rM.json();
             if (dM.choices && dM.choices[0] && dM.choices[0].message && dM.choices[0].message.content) {
@@ -562,7 +573,7 @@ async function askAI(q, opts) {
             var rCo = await fetch('https://api.cohere.com/v2/chat', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + KEY_POOL.cohere[co], 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'command-r-08-2024', messages: messages, max_tokens: 250 })
+                body: JSON.stringify({ model: 'command-r-08-2024', messages: messages, max_tokens: 80 })
             });
             var dCo = await rCo.json();
             if (dCo.message && dCo.message.content && dCo.message.content[0] && dCo.message.content[0].text) {
@@ -573,7 +584,12 @@ async function askAI(q, opts) {
     }
 
     console.log('[AI] ALL PROVIDERS FAILED');
+    if (typeof __lastAIError !== 'undefined') console.log('[AI-ERR] last error:', __lastAIError);
     return null;
+}
+
+async function askAI(q, opts) {
+    return __enqueueAI(function () { return __askAI_inner(q, opts); });
 }
 
 function mem(g, u) {
@@ -1077,6 +1093,18 @@ async function startBot() {
                     !text.startsWith(PREFIX) &&
                     text.indexOf('@bot') === -1 &&
                     (isReplyToBot || isGeneralMessage);
+
+                // QUICK REPLY first — instant, no AI needed
+                if (shouldAutoReply) {
+                    var qr = quickReplyLib.quickReply(text);
+                    if (qr) {
+                        console.log('[QR] ' + qr);
+                        await sock.sendMessage(from, { text: qr }, { quoted: msg });
+                        rememberChat(from, sender, pn || null, 'user', text);
+                        rememberChat(from, sender, null, 'assistant', qr);
+                        continue;
+                    }
+                }
 
                 if (shouldAutoReply) {
                     var now = Date.now();
@@ -2420,6 +2448,43 @@ async function startBot() {
                     } else {
                         await sock.sendMessage(from, { text: uniqueFeatures13.renderForgotten(fPick) }, { quoted: msg });
                     }
+                } else if (featureForge.find(cmd)) {
+                    var feature = featureForge.find(cmd);
+                    try {
+                        var fCtx = {
+                            askAI: askAI,
+                            db: db,
+                            groupId: from,
+                            sender: sender,
+                            senderName: pn || ('@' + sn),
+                            args: args,
+                            text: text,
+                            meta: meta,
+                            sock: sock,
+                            msg: msg,
+                            helpers: {
+                                num: num,
+                                target: function (c) {
+                                    var m = (c.msg.message.extendedTextMessage && c.msg.message.extendedTextMessage.contextInfo && c.msg.message.extendedTextMessage.contextInfo.mentionedJid) || [];
+                                    return m.length ? ('@' + num(m[0])) : null;
+                                },
+                                ltm: function (c, jid, q, lim) {
+                                    try { return longTermMemory.recall(c.db, jid, q || 'personality interests', lim || 8); } catch (e) { return ''; }
+                                },
+                                recent: function (g, lim) {
+                                    try { return recentGroupContext(g, lim || 30); } catch (e) { return ''; }
+                                }
+                            }
+                        };
+                        var fResult = await feature.handler(fCtx);
+                        if (fResult) await sock.sendMessage(from, { text: fResult }, { quoted: msg });
+                    } catch (e) {
+                        console.log('[FORGE] ' + cmd + ':', e.message);
+                        await sock.sendMessage(from, { text: '\u26A0\uFE0F Feature failed: ' + e.message }, { quoted: msg });
+                    }
+                } else if (cmd === 'features' || cmd === 'forge') {
+                    var fList = featureForge.listHelp();
+                    await sock.sendMessage(from, { text: '\uD83D\uDEE0\uFE0F *FEATURE FORGE*\n\n' + fList }, { quoted: msg });
                 } else if (cmd === 'aboutme') {
                     var ltmUser = longTermMemory.getUser(db, sender);
                     var aboutOut = '📌 *LONG-TERM MEMORY*\n\n';
@@ -2492,3 +2557,222 @@ setInterval(async function () {
         } catch (e) { console.log('[LETTERS]', e.message); }
     } catch (e) { console.log('[CAPSULE-LOOP]', e.message); }
 }, 60 * 60 * 1000);
+
+
+// ==== FINAL askAI OVERRIDE (llama.cpp local) ====
+async function askAI(q, opts) {
+    opts = opts || {};
+    var rules = '\n\nIMPORTANT: Reply SHORT (1-2 sentences). Never start with a label like "You:" or "Person:". React naturally.';
+    var sp = (opts.systemPrompt || '') + rules;
+
+    var messages = [];
+    if (sp) messages.push({ role: 'system', content: sp });
+    messages.push({ role: 'user', content: q });
+
+    var run = async function () {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 90000);
+        try {
+            var r = await fetch('http://127.0.0.1:8081/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: messages,
+                    max_tokens: 80,
+                    temperature: 0.9
+                }),
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            var d = await r.json();
+            if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                console.log('[AI] OK via llama');
+                return d.choices[0].message.content;
+            }
+            console.log('[AI] llama no content:', JSON.stringify(d).substring(0, 200));
+            return null;
+        } catch (e) {
+            clearTimeout(timer);
+            console.log('[AI] llama error:', e.name === 'AbortError' ? 'TIMEOUT' : e.message);
+            return null;
+        }
+    };
+
+    if (typeof __enqueueAI === 'function') return __enqueueAI(run);
+    return run();
+}
+// ==== END OVERRIDE ====
+
+
+// ==== TIGHT PERSONA askAI (for local model) ====
+var TIGHT_PERSONA_EN = [
+    "You are Chidi, a real 24-year-old Nigerian guy texting on WhatsApp.",
+    "",
+    "STRICT RULES:",
+    "- Never say you are an AI, a bot, or an assistant. You are a real human.",
+    "- Never say 'I am real' or 'thank you for your message'.",
+    "- Never greet with 'Hello' or 'Hi there'. Just respond to what was said.",
+    "- Keep replies to 1-2 short sentences. Never explain.",
+    "- Use casual typing: lowercase sometimes, emojis rarely, Nigerian slang sometimes.",
+    "- If someone says 'hi' back to you, say something like 'wetin dey' or 'how you dey' or 'sup bro'.",
+    "",
+    "Examples of good replies:",
+    "Person: Hello everyone",
+    "You: Sup guys 👋",
+    "",
+    "Person: how are you",
+    "You: I dey o, u nko? 😎",
+    "",
+    "Person: are you real?",
+    "You: lol yes na, wetin make u think say I no dey real 😂",
+    "",
+    "Person: what's up",
+    "You: Nothing much jare, just dey chill. You nko?",
+    "",
+    "Now reply to the next message in that exact style. Short. Casual. Nigerian."
+].join("\n");
+
+var TIGHT_PERSONA_PIDGIN = [
+    "You be Chidi, real 24-year-old Nigerian guy wey dey chat on WhatsApp.",
+    "",
+    "RULES:",
+    "- You NO be AI, NO be bot. You be real human.",
+    "- No ever talk say you be AI or bot.",
+    "- No greet with 'Hello'. No thank person for message.",
+    "- Keep reply short: 1-2 sentences only.",
+    "- Use pidgin: abeg, wahala, jare, sha, na so, chai, oya, wetin dey.",
+    "- Use emoji small small.",
+    "",
+    "Examples:",
+    "Person: hello everyone",
+    "You: Sup guys 👋",
+    "",
+    "Person: how you dey",
+    "You: I dey o, u nko? 😎",
+    "",
+    "Person: you be AI?",
+    "You: lol no be, na me dey here na 😂",
+    "",
+    "Now reply to the next message. Short. Casual. Pidgin."
+].join("\n");
+
+async function askAI(q, opts) {
+    opts = opts || {};
+
+    // Use pidgin persona if the incoming text is pidgin, else English persona
+    var isPidginText = false;
+    try {
+        var pidWords = ['abeg','wahala','jare','sha','wetin','nko','dey','shey','nna','omo','una','na so','chai','oya'];
+        var lower = String(q || '').toLowerCase();
+        for (var i = 0; i < pidWords.length; i++) {
+            if (lower.indexOf(pidWords[i]) !== -1) { isPidginText = true; break; }
+        }
+    } catch (e) {}
+
+    var persona = isPidginText ? TIGHT_PERSONA_PIDGIN : TIGHT_PERSONA_EN;
+
+    // If caller passed their own system prompt, append it briefly
+    var extraCtx = opts.systemPrompt ? ('\n\nCONTEXT: ' + opts.systemPrompt.substring(0, 400)) : '';
+
+    var messages = [
+        { role: 'system', content: persona + extraCtx },
+        { role: 'user', content: q }
+    ];
+
+    var run = async function () {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 90000);
+        try {
+            var r = await fetch('http://127.0.0.1:8081/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: messages,
+                    max_tokens: 80,
+                    temperature: 0.85,
+                    stop: ['\nPerson:', '\nYou:', '\nUser:', '\nAssistant:']
+                }),
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            var d = await r.json();
+            if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                var out = d.choices[0].message.content.trim();
+                // Strip any accidental labels the model added
+                out = out.replace(/^(You|Person|User|Assistant|Chidi)\s*:\s*/i, '');
+                console.log('[AI] OK via llama');
+                return out;
+            }
+            return null;
+        } catch (e) {
+            clearTimeout(timer);
+            console.log('[AI] llama err:', e.name === 'AbortError' ? 'TIMEOUT' : e.message);
+            return null;
+        }
+    };
+
+    if (typeof __enqueueAI === 'function') return __enqueueAI(run);
+    return run();
+}
+// ==== END TIGHT PERSONA ====
+
+
+// ==== CLEAN PERSONA v2 (memory-aware) ====
+async function askAI(q, opts) {
+    opts = opts || {};
+
+    // Keep the FULL context (memory, name, history) — don't truncate
+    var callerPrompt = opts.systemPrompt || '';
+
+    // Short, focused persona that even a 0.5B model can follow
+    var persona =
+        'You are Chidi, a real 24-year-old Nigerian guy on WhatsApp. ' +
+        'You are NOT an AI or bot. Never say you are AI. Never say "thank you for your message" or "I am here to help". ' +
+        'Reply in 1-2 SHORT sentences. Casual, lowercase sometimes, pidgin sometimes. ' +
+        'Use emojis rarely. Just respond to what the person said.';
+
+    var fullSystem = persona + '\n\n' + callerPrompt;
+
+    var messages = [
+        { role: 'system', content: fullSystem },
+        { role: 'user', content: q }
+    ];
+
+    var run = async function () {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 60000);
+        try {
+            var r = await fetch('http://127.0.0.1:8081/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: messages,
+                    max_tokens: 60,
+                    temperature: 0.85,
+                    stop: ['\nPerson:', '\nUser:', '\nAssistant:', '\nYou:']
+                }),
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            var d = await r.json();
+            if (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) {
+                var out = d.choices[0].message.content.trim();
+                out = out.replace(/^(You|Person|User|Assistant|Chidi)\s*:\s*/i, '');
+                // Strip any lingering AI-speak
+                out = out.replace(/^(I am|I'm)\s+(an?\s+)?(AI|bot|assistant|virtual)\b[^.]*\.?\s*/i, '');
+                out = out.replace(/^Hello[,!]?\s+/i, '');
+                console.log('[AI] OK via llama');
+                return out;
+            }
+            return null;
+        } catch (e) {
+            clearTimeout(timer);
+            console.log('[AI] llama err:', e.name === 'AbortError' ? 'TIMEOUT' : e.message);
+            return null;
+        }
+    };
+
+    if (typeof __enqueueAI === 'function') return __enqueueAI(run);
+    return run();
+}
+// ==== END CLEAN PERSONA v2 ====
