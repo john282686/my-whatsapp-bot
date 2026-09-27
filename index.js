@@ -60,6 +60,7 @@ var uniqueFeatures12 = require('./unique_features12');
 var uniqueFeatures13 = require('./unique_features13');
 var featureForge = require('./feature_forge');
 var quickReplyLib = require('./quick_reply');
+var convEngine = require('./conversation_engine');
 var runningSock = null;
 var loreEngine = require('./lore_engine');
 
@@ -86,7 +87,7 @@ var db = {
     guardianLog: {},
     guardianCooldown: {},
     predictionLedger: {},
-    dmReplies: false
+    dmReplies: true
 };
 
 try {
@@ -1086,17 +1087,51 @@ async function startBot() {
                     !isReplyToHuman &&        // not a reply to another member
                     !startsWithMention;       // does not start with @ or >
 
+                // AI ONLY WHEN ASKED
                 var shouldAutoReply =
                     db.autoReply[from] !== false &&
                     !msg.key.fromMe &&
                     text.length > 1 &&
                     !text.startsWith(PREFIX) &&
-                    text.indexOf('@bot') === -1 &&
-                    (isReplyToBot || isGeneralMessage);
+                    text.indexOf('@bot') === -1;
+
 
                 // QUICK REPLY first — instant, no AI needed
+                // CONVERSATION ENGINE WIRED
                 if (shouldAutoReply) {
+                    // 1st: quick replies (greetings - instant)
                     var qr = quickReplyLib.quickReply(text);
+                    if (qr) {
+                        console.log('[QR] ' + qr);
+                        try { await sock.sendPresenceUpdate('composing', from); } catch(e){}
+                        await new Promise(function(res) { setTimeout(res, 400 + Math.random() * 800); });
+                        try { await sock.sendPresenceUpdate('paused', from); } catch(e){}
+                        await sock.sendMessage(from, { text: qr }, { quoted: msg });
+                        rememberChat(from, sender, pn || null, 'user', text);
+                        rememberChat(from, sender, null, 'assistant', qr);
+                        continue;
+                    }
+
+                    // 2nd: conversation engine (human patterns)
+                    if (convEngine.shouldReplyIncoming(sender, text)) {
+                        var convReply = convEngine.generateReply(sender, text);
+                        if (convReply) {
+                            console.log('[CONV] ' + convReply.text);
+                            try { await sock.sendPresenceUpdate('composing', from); } catch(e){}
+                            // Typing delay proportional to reply length (like a human typing)
+                            var delay = Math.min(4500, 500 + convReply.text.length * 40);
+                            await new Promise(function(res) { setTimeout(res, delay); });
+                            try { await sock.sendPresenceUpdate('paused', from); } catch(e){}
+                            await sock.sendMessage(from, { text: convReply.text }, { quoted: msg });
+                            rememberChat(from, sender, pn || null, 'user', text);
+                            rememberChat(from, sender, null, 'assistant', convReply.text);
+                            continue;
+                        }
+                    }
+                }
+
+                if (false) {
+                    var qr2 = quickReplyLib.quickReply(text);
                     if (qr) {
                         console.log('[QR] ' + qr);
                         await sock.sendMessage(from, { text: qr }, { quoted: msg });
@@ -1106,7 +1141,7 @@ async function startBot() {
                     }
                 }
 
-                if (shouldAutoReply) {
+                if (false) {
                     var now = Date.now();
                     if (!cooldown[sender] || now - cooldown[sender] > 15000) {
                         cooldown[sender] = now;
@@ -2700,6 +2735,31 @@ async function askAI(q, opts) {
                 var out = d.choices[0].message.content.trim();
                 // Strip any accidental labels the model added
                 out = out.replace(/^(You|Person|User|Assistant|Chidi)\s*:\s*/i, '');
+                // PERSONA LEAK FILTER — strip any leaked system prompt text
+                var leakPatterns = [
+                    /You are Chidi[^.]*\./gi,
+                    /a real \d+[- ]year[- ]old Nigerian guy[^.]*\./gi,
+                    /You are NOT an AI[^.]*\./gi,
+                    /Never say you are AI[^.]*\./gi,
+                    /Reply in 1-2 SHORT sentences[^.]*\./gi,
+                    /You are a helpful assistant[^.]*\./gi,
+                    /As an AI[^.]*\./gi,
+                    /I am an AI[^.]*\./gi,
+                    /I'm just an AI[^.]*\./gi,
+                    /I cannot help with that[^.]*\./gi
+                ];
+                leakPatterns.forEach(function (lp) { out = out.replace(lp, ''); });
+                out = out.trim();
+                if (!out || out.length < 2) {
+                    // EMPTY FALLBACK — send a casual reply instead of nothing
+                    console.log('[AI] empty after sanitize, using fallback');
+                    var fallback = [
+                        'sup 😎', 'wetin dey', 'how you dey?', 'nothing much jare',
+                        'I dey o', 'you nko?', 'ok na 👍', 'ehn', 'lol 😂',
+                        'no wahala', 'sure', 'alright'
+                    ];
+                    out = fallback[Math.floor(Math.random() * fallback.length)];
+                }
                 console.log('[AI] OK via llama');
                 return out;
             }
@@ -2718,6 +2778,27 @@ async function askAI(q, opts) {
 
 
 // ==== CLEAN PERSONA v2 (memory-aware) ====
+
+// ==== LAST_REPLY_CACHE (prevents identical replies to different people) ====
+var __lastReplies = {};
+function __dedupeReply(senderId, reply) {
+    if (!reply) return reply;
+    var key = senderId;
+    if (__lastReplies[key] === reply) {
+        // Same reply as last time for this sender — mutate slightly
+        var suffixes = ['', ' 😄', ' 😂', ' 🤔', ' 😎', ' 👀'];
+        reply = reply + suffixes[Math.floor(Math.random() * suffixes.length)];
+    }
+    __lastReplies[key] = reply;
+    // Limit cache size
+    var keys = Object.keys(__lastReplies);
+    if (keys.length > 500) {
+        delete __lastReplies[keys[0]];
+    }
+    return reply;
+}
+// ==== END LAST_REPLY_CACHE ====
+
 async function askAI(q, opts) {
     opts = opts || {};
 
