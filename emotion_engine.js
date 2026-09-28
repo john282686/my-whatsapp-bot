@@ -9,12 +9,12 @@ var EMOTIONS = {
         /\b(i got|i won|i passed|i landed|i made it)\b/i
     ],
     sad: [
-        /\b(sad|depressed|heartbroken|lonely|crying|cried|tears|broken|devastated|hurt)\b/i,
+        /\b(sad|depressed|heartbroken|lonely|crying|cried|tears|broken|devastated|hurt|miss|missing|miss you|missing you)\b/i,
         /\b(sorry|unfortunate|bad news|lost|passed away|rip)\b/i,
         /\b(😢|😭|💔|😔)\b/i
     ],
     angry: [
-        /\b(angry|mad|furious|vexed|pissed|frustrated|annoyed|irritated)\b/i,
+        /\b(angry|mad|furious|vexed|pissed|frustrated|annoyed|annoying|irritated|irritating|disgusting|terrible|horrible|awful)\b/i,
         /\b(nonsense|rubbish|stupid|idiot|fool|rubbish|trash|useless)\b/i,
         /\b(wtf|what the hell|damn|shit|fuck)\b/i,
         /\b(😡|🤬|😠)\b/i
@@ -34,7 +34,7 @@ var EMOTIONS = {
         /\b(😐|😑)\b/i
     ],
     love: [
-        /\b(i love you|i like you|you are amazing|you are the best|miss you)\b/i,
+        /\b(i love you|i like you|you are amazing|you are the best|miss you|i love|love you|love this|love that|adore|favourite|my favorite)\b/i,
         /\b(sweetheart|babe|boo)\b/i
     ],
     laughing: [
@@ -113,8 +113,8 @@ function getEmotionReply(emotion, isPidgin) {
 
 // Should this emotion override the normal reply? (only when user is clearly emotional)
 function shouldOverrideEmotion(emotion) {
-    // Override on strong emotion — but not for "laughing" (already handled by pattern matching)
-    return emotion && emotion !== 'laughing' && emotion !== 'love';
+    // Override for ALL detected emotions
+    return !!emotion;
 }
 
 module.exports = {
