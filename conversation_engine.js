@@ -447,7 +447,7 @@ function __bilingualReply(userId, incomingText) {
             // Context-aware: sometimes reference recent topic
             if (__ctxReplies && __getCtxTracker() && dbForPersonalize) {
                 try {
-                    if (t.length < 25 && Math.random() < 0.35) {
+                    if (t.length < 25 && Math.random() < 0.12) {
                         var topic = __getCtxTracker().getCurrentTopic(dbForPersonalize, userId, '__last_chat');
                         if (topic) {
                             var isPg = __biLang ? __biLang.isPidgin(t) : false;
