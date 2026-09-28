@@ -1,3 +1,6 @@
+var __personalizer = null;
+try { __personalizer = require('./personalizer'); } catch(e) {}
+
 // ============================================================
 // CONVERSATION ENGINE — v2 (clean rebuild)
 // ============================================================
@@ -337,7 +340,11 @@ function __bilingualReply(userId, incomingText) {
         if (BILINGUAL[i].p.test(t)) {
             var pool = userIsPidgin ? (BILINGUAL[i].pg || BILINGUAL[i].en) : (BILINGUAL[i].en || BILINGUAL[i].pg);
             if (!pool || !pool.length) return null;
-            return { text: pickFresh(userId, pool) };
+            var biReply = pickFresh(userId, pool);
+            if (__personalizer && dbForPersonalize) {
+                try { biReply = __personalizer.personalize(userId, t, biReply, dbForPersonalize); } catch(e) {}
+            }
+            return { text: biReply };
         }
     }
     return null;
@@ -352,3 +359,9 @@ module.exports = {
     isGreeting: isGreeting,
     PATTERNS: PATTERNS
 };
+
+
+// Global for personalization access
+var dbForPersonalize = null;
+function setPersonalizerDB(db) { dbForPersonalize = db; }
+module.exports.setPersonalizerDB = setPersonalizerDB;

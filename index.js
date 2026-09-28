@@ -127,6 +127,7 @@ advanced.ensure(db);
 memberProfiles.ensure(db);
 longTermMemory.ensure(db);
 identity.ensure(db);
+if (typeof convEngine !== "undefined" && convEngine.setPersonalizerDB) convEngine.setPersonalizerDB(db);
 longTermMemory.seedFromExisting(db);
 uniqueFeatures3.ensure(db);
 power.ensure(db);
