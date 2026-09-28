@@ -185,15 +185,31 @@ function normalize(text) {
 // ============================================================
 // MAIN FUNCTIONS
 // ============================================================
+// LANGUAGE AWARE — reply in same language as the user
+var __lang = null;
+try { __lang = require('./language_handler'); } catch (e) {}
+
 function generateReply(userId, incomingText) {
+    // 1. Try bilingual library first
+    var biReply = __bilingualReply(userId, incomingText);
+    if (biReply) return biReply;
+
+    // 2. Fall back to original patterns
     var t = normalize(incomingText);
     if (!t || t.length < 2) return null;
     if (t.startsWith('.')) return null;
     if (t.indexOf('@bot') !== -1) return null;
 
+    var userPidgin = __lang ? __lang.isPidgin(t) : false;
+
     for (var i = 0; i < PATTERNS.length; i++) {
         if (PATTERNS[i].p.test(t)) {
-            return { text: pickFresh(userId, PATTERNS[i].r) };
+            var reply = pickFresh(userId, PATTERNS[i].r);
+            // If user wrote English but reply is pidgin, translate it
+            if (!userPidgin && __lang && __lang.isPidgin(reply)) {
+                reply = __lang.translateToEnglish(reply);
+            }
+            return { text: reply };
         }
     }
     return null;
@@ -222,12 +238,20 @@ function shouldReplyIncoming(userId, incomingText) {
 }
 
 function catchAllReply(userId, incomingText) {
+    var biReply = __bilingualReply(userId, incomingText);
+    if (biReply) return biReply.text;
     var t = normalize(incomingText);
     if (t.length < 2) return null;
     if (t.startsWith('.')) return null;
 
+    var userPidgin = __lang ? __lang.isPidgin(t) : false;
+
     var short = ['ehn','hmm','ok o','sure','we dey o','chill','na so','I hear you','ehen','alright','wetin happen?','see talk'];
-    return pickFresh(userId, short);
+    var reply = pickFresh(userId, short);
+    if (!userPidgin && __lang && __lang.isPidgin(reply)) {
+        reply = __lang.translateToEnglish(reply);
+    }
+    return reply;
 }
 
 function getStyleExamples(incomingText) {
@@ -284,6 +308,41 @@ function isGreeting(incomingText) {
     });
     console.log('[LIB] total patterns: ' + PATTERNS.length);
 })();
+
+
+// ============================================================
+// LOAD BILINGUAL LIBRARY (en + pg native replies)
+// ============================================================
+var __biLang = null;
+try { __biLang = require('./language_handler'); } catch (e) {}
+
+var BILINGUAL = [];
+try {
+    BILINGUAL = require('./bilingual_library');
+    console.log('[BI] bilingual library loaded: ' + BILINGUAL.length + ' patterns');
+} catch (e) {
+    console.log('[BI] could not load: ' + e.message);
+}
+
+// Bilingual-aware reply function (checked FIRST before other patterns)
+function __bilingualReply(userId, incomingText) {
+    if (!__biLang || !BILINGUAL.length) return null;
+    var t = normalize(incomingText);
+    if (!t || t.length < 2) return null;
+    if (t.startsWith('.')) return null;
+    if (t.indexOf('@bot') !== -1) return null;
+
+    var userIsPidgin = __biLang.isPidgin(t);
+    for (var i = 0; i < BILINGUAL.length; i++) {
+        if (BILINGUAL[i].p.test(t)) {
+            var pool = userIsPidgin ? (BILINGUAL[i].pg || BILINGUAL[i].en) : (BILINGUAL[i].en || BILINGUAL[i].pg);
+            if (!pool || !pool.length) return null;
+            return { text: pickFresh(userId, pool) };
+        }
+    }
+    return null;
+}
+// ============================================================
 
 module.exports = {
     generateReply: generateReply,

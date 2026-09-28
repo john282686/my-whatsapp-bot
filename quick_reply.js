@@ -1,5 +1,4 @@
-// Quick Replies — instant pre-written responses that feel human.
-// Only falls through to AI when nothing matches.
+// Quick Replies — instant pre-written responses.
 
 var QUICK_REPLIES = [
     // ============ GREETINGS ============
@@ -17,6 +16,40 @@ var QUICK_REPLIES = [
 
     { p: /^\s*(how\s*(are\s*you|you dey|far|body)|how\s*una\s*dey|how\s*you\s*dey|hw\s*(r\s*u|are\s*you))/i,
       r: ['I dey o, u nko? 😎', 'I dey, you nko?', 'Body dey o, you?', 'I dey jare, u nko?'] },
+
+    // ============ NIGERIAN-SPECIFIC ============
+    { p: /^\s*(how far|howfa|how you far|hw far|how far na|how far class|how far guys|how far team)\b/i,
+      r: ['I dey o, you nko? 😎', 'we dey o', 'body dey, you?', 'I dey jare 😎', 'chilling o'] },
+
+    { p: /^\s*(wetin dey happen|wetin dey sup|wetin happen|wetin dey shele)\b/i,
+      r: ['nothing much jare', 'we dey o', 'just dey chill', 'ehn we dey'] },
+
+    { p: /^\s*(how una dey|how una dey na|una dey ok)\b/i,
+      r: ['we dey o 😎', 'body dey', 'we dey jare', 'I dey, una nko?'] },
+
+    { p: /^\s*(you dey ok|you dey)\b/i,
+      r: ['I dey o', 'body dey', 'I dey jare 😎'] },
+
+    { p: /^\s*(dey go|i dey go|am going|going out)\b/i,
+      r: ['later 👋', 'safe journey', 'see you', 'later bro'] },
+
+    { p: /^\s*(i dey come|coming)\b/i,
+      r: ['ok na 👍', 'alright', 'sharp sharp'] },
+
+    { p: /^\s*(oya|oya na|come on|make we)\b/i,
+      r: ['oya na', 'sharp sharp', 'let us go 💪', 'ehn oya'] },
+
+    { p: /^\s*(no wahala|no vex|no problem)\b/i,
+      r: ['👍', 'no wahala', 'ehn o', 'sure'] },
+
+    { p: /^\s*(sharp sharp|sharp)\b/i,
+      r: ['sharp sharp 👍', 'ehn o', '💯'] },
+
+    { p: /^\s*(serious|seriously|you serious)\b/i,
+      r: ['seriously o 😳', 'I swear', 'on god', 'real talk'] },
+
+    { p: /^\s*(wetin)\s*[!?.,]?\s*$/i,
+      r: ['wetin?', 'you tell me now', 'wetin happen'] },
 
     // ============ LAUGHTER / AGREEMENT ============
     { p: /^\s*(lol|lmao|lmfao|😂+|🤣+|haha+|hehe+)\s*$/i,
@@ -65,7 +98,7 @@ var QUICK_REPLIES = [
       r: ['thanks 🙏', '🙏', 'no wahala'] },
 
     { p: /^\s*(sorry)\b/i,
-      r: ['no wahala', 'it\u2019s ok', 'no problem 🙏'] },
+      r: ['no wahala', "it's ok", 'no problem 🙏'] },
 
     { p: /^\s*(congrats|congratulations|congrats)\b/i,
       r: ['🎉🎉', 'congrats!', 'yes o! 🎉'] },
@@ -81,7 +114,7 @@ function pickRandom(arr) {
 function quickReply(text) {
     if (!text) return null;
     var t = String(text).trim();
-    if (t.length < 1 || t.length > 60) return null; // only for short-ish messages
+    if (t.length < 1 || t.length > 60) return null;
     for (var i = 0; i < QUICK_REPLIES.length; i++) {
         if (QUICK_REPLIES[i].p.test(t)) {
             return pickRandom(QUICK_REPLIES[i].r);

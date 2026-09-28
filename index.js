@@ -60,6 +60,7 @@ var uniqueFeatures12 = require('./unique_features12');
 var uniqueFeatures13 = require('./unique_features13');
 var featureForge = require('./feature_forge');
 var quickReplyLib = require('./quick_reply');
+var identity = require('./identity_manager');
 var convEngine = require('./conversation_engine');
 var runningSock = null;
 var loreEngine = require('./lore_engine');
@@ -125,6 +126,7 @@ Object.keys(__LATE_DEFAULTS).forEach(function (k) {
 advanced.ensure(db);
 memberProfiles.ensure(db);
 longTermMemory.ensure(db);
+identity.ensure(db);
 longTermMemory.seedFromExisting(db);
 uniqueFeatures3.ensure(db);
 power.ensure(db);
@@ -952,7 +954,8 @@ async function startBot() {
 
                 if (!msg.key.fromMe && text) {
                     advanced.track(db, from, sender, 'message');
-                    saveDB();
+
+                if (!msg.key.fromMe) { try { identity.observe(db, sender, pn, isG ? from : null); } catch(e){} }                    saveDB();
                 }
 
                 if (!msg.key.fromMe && !isSenderAdmin) {

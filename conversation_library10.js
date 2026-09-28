@@ -7,7 +7,7 @@ var LIB10 = [
   r: ['wetin?','talk am','ehn','ok o'] },
 { p: /^\s*(random\s*text|testing|test|just\s*testing)\s*$/i,
   r: ['we dey see you o','testing wetyn?','ehen na','ok o'] },
-{ p: /^\s*(+\s*)/,
+{ p: /^\s*\+/,
   r: ['wetin dey?','talk am','ehen','chill'] },
 
 // ============ GROUP-SPECIFIC ============

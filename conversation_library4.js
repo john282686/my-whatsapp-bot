@@ -1,0 +1,187 @@
+// ============================================================
+// CONVERSATION LIBRARY 4 — crypto, sports rivalries, deep pidgin, forwards
+// ============================================================
+var LIB4 = [
+
+// ============ CRYPTO / INVESTMENT (25) ============
+{ p: /\b(crypto|bitcoin|btc|eth|ethereum|usdt|binance|bybit|okx)\b/i,
+  r: ['crypto dey do people o','you dey trade?','which coin?','no lose money o','crypto na risky thing'] },
+{ p: /\b(trading|trade|scalp|spot|futures|leverage|long|short)\b/i,
+  r: ['which position you hold?','trading na tough work','no over leverage o','we go see'] },
+{ p: /\b(invest|investment|returns|roi|profit|loss)\b/i,
+  r: ['which investment?','no put all your egg for one basket','God dey o','we dey watch'] },
+{ p: /\b(scam|scammer|419|ponzi|hyip|money doubl)\b/i,
+  r: ['no fall for am o','scam dey everywhere','abeg no send money','chill'] },
+{ p: /\b(signal|signals|vip|trading group|forex)\b/i,
+  r: ['which signal?','no fall for am o','chill jare','verify before you put money'] },
+
+// ============ SPORTS RIVALRIES (30) ============
+{ p: /\b(chelsea|cfa|blues)\b/i,
+  r: ['Chelsea na my team 💙','up blues!','which side you dey?','we dey watch'] },
+{ p: /\b(arsenal|gunners|afc)\b/i,
+  r: ['Arsenal dey try o','gunners 🔴','we go see','which one you dey support?'] },
+{ p: /\b(man u|man utd|man united|red devils)\b/i,
+  r: ['Man U dey suffer o','red devils 🔴','chai','we go see'] },
+{ p: /\b(liverpool|lfc|reds)\b/i,
+  r: ['Liverpool na fire o','we dey watch','which team?','🔴'] },
+{ p: /\b(madrid|real madrid|barca|barcelona|bayern|juventus|psg)\b/i,
+  r: ['which one you support?','that match sweet o','we dey watch','⚽'] },
+{ p: /\b(messi|ronaldo|cr7|lm10|goat)\b/i,
+  r: ['Messi na goat o','Ronaldo dey try','which one you dey?','no fight o 😂'] },
+{ p: /\b(match today|game tonight|kick off|kickoff)\b/i,
+  r: ['which match?','we dey watch','what time?','who dey play?'] },
+
+// ============ DEEP PIDGIN (30) ============
+{ p: /\b(wetin dey happen\s*(na|seff))\b/i,
+  r: ['nothing much o','we dey jare','wetyn you hear?'] },
+{ p: /\b(abeg no vex|no vex o|no vex now)\b/i,
+  r: ['no wahala o','we dey o','ehen nothing'] },
+{ p: /\b(na god o|na god|nagod)\b/i,
+  r: ['na God o 🙏','Amen','ehen o'] },
+{ p: /\b(small small|smalli smalli|shmall)\b/i,
+  r: ['small small o','we go manage','e go better','na so'] },
+{ p: /\b(oya make we|make we (go|do|start|begin|move))\b/i,
+  r: ['oya na','let\'s go 💪','dey come','sharp sharp'] },
+{ p: /\b(you know wetin\s*abi|abi\s*no|abi na)\b/i,
+  r: ['abi o','ehen na','na so o'] },
+{ p: /\b(i dey come|i dey come now|dey come)\b/i,
+  r: ['ok na','sharp sharp','alright','we dey wait'] },
+{ p: /\b(make i|make i (go|do|see|talk|move))\b/i,
+  r: ['oya na','go o','dey go','sharp sharp'] },
+{ p: /\b(i no know o|i no sabi|i no understand)\b/i,
+  r: ['ehen o','you tell me','wetin happen?','chill'] },
+{ p: /\b(no be so|no be so o)\b/i,
+  r: ['na so o','ehen na','you sabi o'] },
+
+// ============ WHATSAPP FORWARDS (20) ============
+{ p: /\b(good morning.*(quote|prayer|message|daily))\b/i,
+  r: ['🙏','amen o','ehen morning o','blessings'] },
+{ p: /\b(forwarded many times|forwarded as received)\b/i,
+  r: ['see forward 😂','who send you?','abeg jare'] },
+{ p: /\b(god bless you.*(forward|share|send))\b/i,
+  r: ['🙏','amen o','God bless you too','chill'] },
+{ p: /\b(share this|send this|forward this)\b/i,
+  r: ['who send you this?','no be my own','abeg','chill'] },
+
+// ============ MORE REACTIONS (30) ============
+{ p: /^\s*(ok o|okay o|alright o|sure o|ehn o)\s*$/i,
+  r: ['ehen na','yes o','na so o','👍'] },
+{ p: /^\s*(ahah|ah ah|ahh|ahhh)\s*[!?.,]?\s*$/i,
+  r: ['wetin happen?','wetin?','talk am','chill'] },
+{ p: /^\s*(ehen|ehen o|ehen na|ehn|ehn o)\s*$/i,
+  r: ['na so o','yes o','I dey hear','👍'] },
+{ p: /^\s*(na wa|nawa|nawa o|na wa o)\s*[!.,]?\s*$/i,
+  r: ['na wa o','chai','see this thing','ehen'] },
+{ p: /^\s*(whoa|whoah|wow o|wowo)\s*[!.,]?\s*$/i,
+  r: ['chai','see this thing','serious?','omo'] },
+{ p: /^\s*(sure sure|for sure|def for sure)\s*$/i,
+  r: ['💯','na so o','ehen na','yes o'] },
+{ p: /^\s*(baddest|baddo|baddest o|baddo o)\s*$/i,
+  r: ['🔥🔥','na you','you too much o','💪'] },
+{ p: /^\s*(chei|chei o|oyinbo|shine shine)\s*$/i,
+  r: ['chai o','na wa o','see this thing','ehen'] },
+{ p: /^\s*(hmm+|hmmm+|hm+)\s*$/i,
+  r: ['wetin happen?','you dey think?','talk am na','ehen'] },
+{ p: /^\s*(ohh|oh|oooh|ooo)\s*[!.,]?\s*$/i,
+  r: ['wetin happen?','talk am','serious?','ehen'] },
+{ p: /^\s*(ewo|ewoh|ewo o|ewoh o)\s*[!.,]?\s*$/i,
+  r: ['ewo o','chai','na wa','wetin happen?'] },
+{ p: /^\s*(dey there|dey dere|dey de)\s*$/i,
+  r: ['I dey o','we dey o','present 👋','here o'] },
+
+// ============ COMMON TYPOS (20) ============
+{ p: /^\s*(how\s*r\s*u|how\s*u\s*dey|hw\s*u\s*dey)\b/i,
+  r: ['I dey o, u nko?','body dey','I dey jare'] },
+{ p: /^\s*(hw\s*far|howfa)\s*$/i,
+  r: ['I dey o, you nko? 😎','we dey o','body dey, you?'] },
+{ p: /^\s*(wat\s*up|watup|wats\s*up|wat\s*happen)\s*$/i,
+  r: ['nothing much','we dey o','wetin dey?','just dey chill'] },
+{ p: /^\s*(helo|heelo|hhlo|hlo)\s*$/i,
+  r: ['sup 👋','hey','yo','wetin dey'] },
+{ p: /^\s*(yhu|yhuu|yhuuu)\s*$/i,
+  r: ['I dey o','yes na','ehen','👍'] },
+
+// ============ AFFIRMATIONS / RESPONSES (25) ============
+{ p: /\b(you too much|u too much|u sabi|you sabi)\b/i,
+  r: ['🙏','you sef','na you o','we dey learn'] },
+{ p: /\b(no worry|no wahala|no problem|no vex)\b/i,
+  r: ['👍','ehen nothing','we dey o','ehen no issue'] },
+{ p: /\b(i agree|agreed|you right|you dey right)\b/i,
+  r: ['💯','yes o','na so o','ehen na'] },
+{ p: /\b(i no agree|i disagree|no be so)\b/i,
+  r: ['how?','explain na','wetin you mean?','chill'] },
+{ p: /\b(i dey with you|i dey your side|i back you)\b/i,
+  r: ['🙏','ehen na','we dey o','💪'] },
+
+// ============ CONVERSATION STARTERS (20) ============
+{ p: /\b(so\s*wetin|so\s*what|so\s*then)\b/i,
+  r: ['wetin happen?','talk am na','continue','wetyn dey sup?'] },
+{ p: /\b(tell me something|gist me|talk to me)\b/i,
+  r: ['wetin you want hear?','talk am','I dey hear','spill am'] },
+{ p: /\b(what\'?s new|whats new|anything new)\b/i,
+  r: ['nothing much o','we dey o','same old','what about you?'] },
+{ p: /\b(how e take happen|how it happen|what happen)\b/i,
+  r: ['ehen wetin?','talk am','I dey hear','continue'] },
+
+// ============ SPECIFIC COMMENTS (15) ============
+{ p: /\b(na wa for you|na wa for una)\b/i,
+  r: ['wetin happen now?','chill na','abeg','na so e be'] },
+{ p: /\b(you dey lie|you lie|na lie|abi na lie)\b/i,
+  r: ['no be lie o','I swear','na true o','chill na'] },
+{ p: /\b(na joke|you dey joke|you dey whine me|you dey do me)\b/i,
+  r: ['no be joke o','I serious','chill na','you dey hear?'] },
+{ p: /\b(no be me|no be me o|na you|na u)\b/i,
+  r: ['na you o','no be me','ehen na','chill'] },
+
+// ============ TIME / PLANS (15) ============
+{ p: /\b(later|let\'?s talk later|we go talk)\b/i,
+  r: ['later o','no wahala','see you','ok na'] },
+{ p: /\b(tonight|this night|dis night)\b/i,
+  r: ['tonight o','we go see','let\'s link up','what time?'] },
+{ p: /\b(tomorrow|2moro|2mrw)\b/i,
+  r: ['tomorrow o','we go see','alright','ok na'] },
+{ p: /\b(what time|wetin time|when)\b/i,
+  r: ['what time you get?','we go see','later o','tell me'] },
+
+// ============ MISC RESPONSES (30) ============
+{ p: /\b(e don (do|reach|tay|pass))\b/i,
+  r: ['e don do o','e don pass','chai','see this thing'] },
+{ p: /\b(i don see am|i don hear am|i don understand)\b/i,
+  r: ['ehen na','ok o','sharp','👍'] },
+{ p: /\b(e no concern me|e no be my business|no be my problem)\b/i,
+  r: ['chill o','we dey jare','ok na','ehen'] },
+{ p: /\b(no talk to me|no dey talk to me)\b/i,
+  r: ['chill na','wetin happen?','no vex','ehen ok'] },
+{ p: /\b(mind your business|mydb)\b/i,
+  r: ['chill o','no vex','abeg','ok na'] },
+{ p: /\b(i don talk am|i don tell you|i don tell una)\b/i,
+  r: ['ehen na','ok o','I hear you','we dey hear'] },
+{ p: /\b(who ask you|who ask you that)\b/i,
+  r: ['chill o','abeg','no vex','ehen ok'] },
+{ p: /\b(i don fire|i don shoot|i don burst am)\b/i,
+  r: ['🔥🔥','see this thing','you too much o','chai'] },
+{ p: /\b(nothing dey happen|nothing happen|notin dey happen)\b/i,
+  r: ['na so o','we dey o','chill o','ehen'] },
+{ p: /\b(i no gree|i no gree o)\b/i,
+  r: ['how?','wetin happen?','chill na','explain'] },
+
+// ============ VERY SHORT REACTIONS (15) ============
+{ p: /^\s*(\w{1,3})\s*\?\s*$/,
+  r: ['wetin?','talk am','what?','ehn'] },
+{ p: /^\s*(\+\+|\-\-)\s*$/,
+  r: ['👍','💯','ok o','ehen'] },
+{ p: /^\s*(\?{2,}|!{2,})\s*$/,
+  r: ['wetin happen?','talk am','ehn','chill'] },
+{ p: /^\s*\.{2,}\s*$/,
+  r: ['talk na','wetin?','ehen','chill'] },
+
+// ============ LONG GENERIC (5) ============
+{ p: /.{100,}/,
+  r: ['you talk well o','ehn ehn','ok o','I hear you','we go see'] },
+
+// ============ FINAL CATCH-ALL (add more variety) ============
+{ p: /.{3,}/,
+  r: ['ehn','hmm','ok o','sure','we dey o','chill','na so','I hear you','ehen','alright','talk am','continue'] }
+
+];
+module.exports = LIB4;
