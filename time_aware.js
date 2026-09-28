@@ -39,12 +39,17 @@ var BAD_BY_PERIOD = {
 // Extra: morning-only replies are banned outside morning
 var MORNING_ONLY = [
     /hope you slept well/i, /slept well/i, /morn don break/i,
-    /morning o/i, /^morning/i, /good morning/i
+    /morning o/i, /^morning/i, /good morning/i,
+    /bright and early/i, /top of the morning/i, /rise and shine/i,
+    /^gm\b/i, /^gm!/i, /^gm\s/i, /^morning/i, /^good morning/i,
+    /morning hey/i, /morning jare/i, /morning chief/i,
+    /ehen morning/i, /morn o/i, /morn don break/i,
+    /^morn/i
 ];
 
 // Afternoon-only replies
 var AFTERNOON_ONLY = [
-    /afternoon o/i, /^afternoon/i, /good afternoon/i
+    /afternoon o/i, /^afternoon/i, /good afternoon/i, /^afternoon!/i
 ];
 
 // Evening-only replies

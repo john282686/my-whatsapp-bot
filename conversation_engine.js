@@ -349,6 +349,54 @@ try {
 }
 
 // Bilingual-aware reply function (checked FIRST before other patterns)
+
+// ==== TIME-POOL-OVERRIDE ====
+// If user says a time-of-day greeting but the current time doesn't match,
+// return a pool of replies for the CURRENT time instead.
+function __timeAppropriatePool(userText, originalPool) {
+    if (!__timeAware) return originalPool;
+    var period = __timeAware.getPeriod();
+    var t = String(userText).toLowerCase();
+
+    // Detect what the user said
+    var saysMorning = /\b(good\s*morning|morning|morn)\b/i.test(t);
+    var saysAfternoon = /\b(good\s*afternoon|afternoon|aftn)\b/i.test(t);
+    var saysEvening = /\b(good\s*evening|evening|eve)\b/i.test(t);
+    var saysNight = /\b(good\s*night|night|nite)\b/i.test(t);
+
+    // If the user's greeting matches the actual time, use original pool
+    if (period === 'morning' && saysMorning) return originalPool;
+    if (period === 'afternoon' && saysAfternoon) return originalPool;
+    if (period === 'evening' && saysEvening) return originalPool;
+    if (period === 'night' && saysNight) return originalPool;
+
+    // If user said a time-of-day greeting that DOESN'T match, replace the pool
+    if (saysMorning || saysAfternoon || saysEvening || saysNight) {
+        var map = {
+            morning: {
+                en: ['Good morning ☀️','Morning!','Hope you slept well','Morning 🌞','Rise and shine ☀️'],
+                pg: ['Morning o ☀️','Morn don break 🌞','Morning chief','Morn o']
+            },
+            afternoon: {
+                en: ['Good afternoon ☀️','Afternoon!','How is your day going?','Hey!'],
+                pg: ['Afternoon o','Good afternoon o ☀️','Afternoon chief']
+            },
+            evening: {
+                en: ['Good evening 🌙','Evening!','Hope you had a good day','Hey!'],
+                pg: ['Evening o 🌆','Good evening o','Evening chief']
+            },
+            night: {
+                en: ['Good night 🌙','Sleep well','Night!','Rest well 😴'],
+                pg: ['Night o 🌙','Sleep well o','Good night chief']
+            }
+        };
+        var pick = map[period];
+        if (pick) return pick.en.concat(pick.pg);
+    }
+    return originalPool;
+}
+// ==== END TIME-POOL-OVERRIDE ====
+
 function __bilingualReply(userId, incomingText) {
     if (!__biLang || !BILINGUAL.length) return null;
     var t = normalize(incomingText);
@@ -360,6 +408,7 @@ function __bilingualReply(userId, incomingText) {
     for (var i = 0; i < BILINGUAL.length; i++) {
         if (BILINGUAL[i].p.test(t)) {
             var pool = userIsPidgin ? (BILINGUAL[i].pg || BILINGUAL[i].en) : (BILINGUAL[i].en || BILINGUAL[i].pg);
+            pool = __timeAppropriatePool(t, pool); // TIME-POOL-OVERRIDE applied
             if (!pool || !pool.length) return null;
             var biReply = pickFresh(userId, pool);
             if (__personalizer && dbForPersonalize) {
