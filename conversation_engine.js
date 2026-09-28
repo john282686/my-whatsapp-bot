@@ -1,3 +1,15 @@
+// ==== ctx tracker lazy loader ====
+var __ctxInstance = null;
+function __getCtxTracker() {
+    if (__ctxInstance) return __ctxInstance;
+    try { __ctxInstance = require('./context_tracker'); } catch(e) { console.log('[CTX] load fail:', e.message); }
+    return __ctxInstance;
+}
+// ==== end ====
+
+var __ctxReplies = null;
+try { __ctxReplies = require('./context_replies'); } catch(e) { console.log("[CTX] load fail: " + e.message); }
+
 var __emotion = null;
 try { __emotion = require('./emotion_engine'); } catch(e) {}
 
@@ -432,6 +444,19 @@ function __bilingualReply(userId, incomingText) {
             if (__personalizer && dbForPersonalize) {
                 try { biReply = __personalizer.personalize(userId, t, biReply, dbForPersonalize); } catch(e) {}
             }
+            // Context-aware: sometimes reference recent topic
+            if (__ctxReplies && __getCtxTracker() && dbForPersonalize) {
+                try {
+                    if (t.length < 25 && Math.random() < 0.35) {
+                        var topic = __getCtxTracker().getCurrentTopic(dbForPersonalize, userId, '__last_chat');
+                        if (topic) {
+                            var isPg = __biLang ? __biLang.isPidgin(t) : false;
+                            biReply = __ctxReplies.addContextToReply(biReply, topic, isPg);
+                            console.log('[CTX-REPLY] topic=' + topic);
+                        }
+                    }
+                } catch(e) { console.log('[CTX-ERR]', e.message); }
+            }
             return { text: biReply };
         }
     }
@@ -452,4 +477,19 @@ module.exports = {
 // Global for personalization access
 var dbForPersonalize = null;
 function setPersonalizerDB(db) { dbForPersonalize = db; }
+
+// ==== CONTEXT DB SETTER ====
+var __ctxDB = null;
+function setContextDB(db) {
+    __ctxDB = db;
+    try {
+        var ct = require('./context_tracker');
+        if (ct && ct.ensure) ct.ensure(db);
+    } catch(e) {}
+}
+// ==== END ====
+
 module.exports.setPersonalizerDB = setPersonalizerDB;
+
+
+module.exports.setContextDB = setContextDB;
