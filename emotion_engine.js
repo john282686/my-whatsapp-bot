@@ -4,10 +4,14 @@
 
 var EMOTIONS = {
     happy: [
-        /\b(happy|glad|excited|great news|amazing|wonderful|awesome|fantastic|joyful|delighted|blessed)\b/i,
+        /\b(happy|glad|excited|great news|amazing|wonderful|awesome|fantastic|joyful|delighted|blessed|celebrating|celebration)\b/i,
         /\b(yay|whoop|finally|yes!|🎉|😄|😊|🥳|❤️)\b/i,
-        /\b(i got|i won|i passed|i landed|i made it)\b/i
-    ],
+        /\bi\s+(\w+\s+)?(got|won|passed|landed|made)\b/i,
+        /\b(got|getting)\s+(promoted|a\s+promotion|the\s+job|married|engaged|accepted|selected)\b/i,
+        /\b(i\s+)?(bought|purchased|bought\s+myself)\b/i,
+        /\b(promoted|graduated|selected|chosen|accepted|earned)\b/i,
+        /\b(success|win|victory|achievement|milestone|breakthrough)\b/i
+    ],,
     sad: [
         /\b(sad|depressed|heartbroken|lonely|crying|cried|tears|broken|devastated|hurt|miss|missing|miss you|missing you)\b/i,
         /\b(sorry|unfortunate|bad news|lost|passed away|rip)\b/i,
