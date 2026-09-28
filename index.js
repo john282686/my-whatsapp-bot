@@ -2523,6 +2523,45 @@ async function startBot() {
                 } else if (cmd === 'features' || cmd === 'forge') {
                     var fList = featureForge.listHelp();
                     await sock.sendMessage(from, { text: '\uD83D\uDEE0\uFE0F *FEATURE FORGE*\n\n' + fList }, { quoted: msg });
+                } else if (cmd === 'idcard') {
+                    var idT = tgt || sender;
+                    var idU = identity.getUser(db, idT);
+                    var cardText = '🪪 *IDENTITY CARD*\n\n' + identity.buildProfileText(db, idT);
+                    if (idU.picture) {
+                        try {
+                            await sock.sendMessage(from, { image: { url: idU.picture }, caption: cardText, mentions: [idT] }, { quoted: msg });
+                            continue;
+                        } catch (e) {}
+                    }
+                    await sock.sendMessage(from, { text: cardText, mentions: [idT] }, { quoted: msg });
+                } else if (cmd === 'whofind') {
+                    var kw = args.join(' ').trim();
+                    if (!kw) {
+                        await sock.sendMessage(from, { text: 'Usage: ' + PREFIX + 'whofind <name>' }, { quoted: msg });
+                    } else {
+                        var found = identity.findByKeyword(db, kw);
+                        if (!found.length) {
+                            await sock.sendMessage(from, { text: '❌ Nobody matching "' + kw + '"' }, { quoted: msg });
+                        } else {
+                            var fOut = '🔍 *Found ' + found.length + ' for "' + kw + '":*\n\n';
+                            found.slice(0, 10).forEach(function(u, i) {
+                                fOut += (i+1) + '. ' + (u.name || 'unknown') + ' — @' + String(u.jid).split('@')[0] + '\n';
+                            });
+                            await sock.sendMessage(from, { text: fOut, mentions: found.slice(0,10).map(function(u){ return u.jid; }) });
+                        }
+                    }
+                } else if (cmd === 'idstats') {
+                    var all = identity.listAll(db);
+                    var withPic = all.filter(function(u){ return !!u.picture; }).length;
+                    var withName = all.filter(function(u){ return !!u.name; }).length;
+                    var totalGroups = 0;
+                    all.forEach(function(u){ totalGroups += (u.groups || []).length; });
+                    var stat = '📊 *IDENTITY STATS*\n\n';
+                    stat += 'Total tracked: ' + all.length + '\n';
+                    stat += 'With names: ' + withName + '\n';
+                    stat += 'With pictures: ' + withPic + '\n';
+                    stat += 'Total group memberships: ' + totalGroups + '\n';
+                    await sock.sendMessage(from, { text: stat }, { quoted: msg });
                 } else if (cmd === 'aboutme') {
                     var ltmUser = longTermMemory.getUser(db, sender);
                     var aboutOut = '📌 *LONG-TERM MEMORY*\n\n';
