@@ -16,8 +16,8 @@ var BI = [
   pg: ['sup 👋','yo 😎','hey guy','wetin dey','ehen o','chale','sup sup','yo yo'] },
 
 { p: /^\s*(good\s*(morning|mrng|morn))\b/i,
-  en: ['Good morning ☀️','Morning!','Good morning!','Hope you slept well','Morning 🌞','Good morning to you'],
-  pg: ['Morning o ☀️','Morn don break 🌞','Morning chief','Morning o, how you sleep?'] },
+  en: ['Good morning ☀️','Morning!','Good morning!','Hope you slept well','Morning 🌞','Good morning to you','Hey! Good morning','Morning o! ☀️','Rise and shine ☀️','Good morning, hope you slept well','Top of the morning!','Morning 😊','Gm!','Morning hey','Bright and early!'],
+  pg: ['Morning o ☀️','Morn don break 🌞','Morning chief','Morning o, how you sleep?','Morn o','Ehen morning o','Morn don break o 🌞','Morning jare','Morning o, hope you sleep well'] },
 
 { p: /^\s*(good\s*(afternoon|aftn))\b/i,
   en: ['Good afternoon ☀️','Afternoon!','Hope your day is going well','Good afternoon to you'],

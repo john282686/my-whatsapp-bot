@@ -35,17 +35,81 @@ var BAD_BY_PERIOD = {
 };
 
 // Pick a time-appropriate reply from the pool
+
+// Extra: morning-only replies are banned outside morning
+var MORNING_ONLY = [
+    /hope you slept well/i, /slept well/i, /morn don break/i,
+    /morning o/i, /^morning/i, /good morning/i
+];
+
+// Afternoon-only replies
+var AFTERNOON_ONLY = [
+    /afternoon o/i, /^afternoon/i, /good afternoon/i
+];
+
+// Evening-only replies
+var EVENING_ONLY = [
+    /evening o/i, /^evening/i, /good evening/i
+];
+
+// Night-only replies
+var NIGHT_ONLY = [
+    /^night o/i, /^good night/i, /^goodnight/i, /sleep well/i,
+    /later o.*night/i
+];
+
+function isTimeMismatch(reply, period) {
+    if (!reply || !period) return false;
+    if (period !== 'morning') {
+        for (var i = 0; i < MORNING_ONLY.length; i++) {
+            if (MORNING_ONLY[i].test(reply)) return true;
+        }
+    }
+    if (period !== 'afternoon') {
+        for (var j = 0; j < AFTERNOON_ONLY.length; j++) {
+            if (AFTERNOON_ONLY[j].test(reply)) return true;
+        }
+    }
+    if (period !== 'evening') {
+        for (var k = 0; k < EVENING_ONLY.length; k++) {
+            if (EVENING_ONLY[k].test(reply)) return true;
+        }
+    }
+    if (period !== 'night') {
+        for (var l = 0; l < NIGHT_ONLY.length; l++) {
+            if (NIGHT_ONLY[l].test(reply)) return true;
+        }
+    }
+    return false;
+}
+
+// Time-appropriate generic fallbacks (if all pool replies are filtered out)
+var TIME_FALLBACKS = {
+    morning: ['Morning! ☀️', 'Morning o', 'Morn don break 🌞', 'Good morning!', 'Hey! Morning ☀️'],
+    afternoon: ['Afternoon o', 'Good afternoon ☀️', 'Afternoon!', 'Hey!', 'Hi there'],
+    evening: ['Evening o 🌆', 'Good evening 🌙', 'Evening!', 'Hey!', 'Hi there'],
+    night: ['Night o 🌙', 'Good night', 'Evening o', 'Hey!', 'Sleep well 😴']
+};
+
+function getTimeFallback(period) {
+    var arr = TIME_FALLBACKS[period] || TIME_FALLBACKS.afternoon;
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
 function pickTimeAppropriate(pool, period) {
     if (!pool || !pool.length) return null;
     var badPatterns = BAD_BY_PERIOD[period] || [];
     var valid = pool.filter(function (reply) {
+        // Old filter
         for (var i = 0; i < badPatterns.length; i++) {
             if (badPatterns[i].test(reply)) return false;
         }
+        // NEW: strict time-mismatch filter
+        if (isTimeMismatch(reply, period)) return false;
         return true;
     });
-    // If all were filtered out, use the original pool
-    if (!valid.length) return pool[Math.floor(Math.random() * pool.length)];
+    // If nothing survived, use a time-appropriate fallback
+    if (!valid.length) return getTimeFallback(period);
     return valid[Math.floor(Math.random() * valid.length)];
 }
 
@@ -88,6 +152,8 @@ function fixGreeting(reply, period) {
 }
 
 module.exports = {
+    isTimeMismatch: isTimeMismatch,
+    getTimeFallback: getTimeFallback,
     getPeriod,
     getHour,
     pickTimeAppropriate,
