@@ -1,3 +1,6 @@
+var __emotion = null;
+try { __emotion = require('./emotion_engine'); } catch(e) {}
+
 var __timeAware = null;
 try { __timeAware = require('./time_aware'); } catch(e) {}
 
@@ -214,7 +217,22 @@ var __lang = null;
 try { __lang = require('./language_handler'); } catch (e) {}
 
 function generateReply(userId, incomingText) {
-    // 1. Try bilingual library first
+    // 0. Check emotion FIRST — override for strong emotional messages
+    if (__emotion) {
+        try {
+            var emo = __emotion.detectEmotion(incomingText);
+            if (emo && __emotion.shouldOverrideEmotion(emo)) {
+                var isPg = __biLang ? __biLang.isPidgin(incomingText) : false;
+                var emoReply = __emotion.getEmotionReply(emo, isPg);
+                if (emoReply) {
+                    console.log('[EMO] detected ' + emo);
+                    return { text: emoReply };
+                }
+            }
+        } catch(e) {}
+    }
+
+    // 1. Try bilingual library
     var biReply = __bilingualReply(userId, incomingText);
     if (biReply) return biReply;
 
