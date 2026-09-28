@@ -1,3 +1,6 @@
+var __timeAware = null;
+try { __timeAware = require('./time_aware'); } catch(e) {}
+
 var __personalizer = null;
 try { __personalizer = require('./personalizer'); } catch(e) {}
 
@@ -174,11 +177,29 @@ function isRecent(userId, text) {
     return recentByUser[userId] && recentByUser[userId].indexOf(text) !== -1;
 }
 function pickFresh(userId, arr) {
+    if (!arr || !arr.length) return null;
+    var period = __timeAware ? __timeAware.getPeriod() : null;
+
+    // Try up to 10 times to find a fresh + time-appropriate reply
     for (var i = 0; i < 10; i++) {
-        var c = r(arr);
-        if (!isRecent(userId, c)) { remember(userId, c); return c; }
+        var c = __timeAware ? __timeAware.pickTimeAppropriate(arr, period) : r(arr);
+        if (!c) continue;
+        if (!isRecent(userId, c)) {
+            // Final safety: if it's still time-inappropriate, fix it
+            if (__timeAware && __timeAware.isTimeInappropriate(c, period)) {
+                c = __timeAware.fixGreeting(c, period);
+            }
+            remember(userId, c);
+            return c;
+        }
     }
-    return r(arr);
+
+    // Fallback
+    var fallback = __timeAware ? __timeAware.pickTimeAppropriate(arr, period) : r(arr);
+    if (__timeAware && __timeAware.isTimeInappropriate(fallback, period)) {
+        fallback = __timeAware.fixGreeting(fallback, period);
+    }
+    return fallback;
 }
 
 function normalize(text) {
