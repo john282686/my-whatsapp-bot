@@ -371,6 +371,16 @@ var __biLang = null;
 try { __biLang = require('./language_handler'); } catch (e) {}
 
 var BILINGUAL = [];
+
+// Load expanded FIRST (higher priority)
+try {
+    var __BIX = require('./bilingual_expanded');
+    if (Array.isArray(__BIX)) {
+        __BIX.forEach(function(e) { BILINGUAL.push(e); });
+        console.log('[BIX] loaded ' + __BIX.length + ' expanded patterns (priority)');
+    }
+} catch (e) { console.log('[BIX] could not load: ' + e.message); }
+
 try {
     BILINGUAL = require('./bilingual_library');
     console.log('[BI] bilingual library loaded: ' + BILINGUAL.length + ' patterns');
