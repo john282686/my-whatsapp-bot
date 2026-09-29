@@ -195,26 +195,35 @@ function pickFresh(userId, arr) {
     if (!arr || !arr.length) return null;
     var period = __timeAware ? __timeAware.getPeriod() : null;
 
-    // Try up to 10 times to find a fresh + time-appropriate reply
-    for (var i = 0; i < 20; i++) {
-        var c = __timeAware ? __timeAware.pickTimeAppropriate(arr, period) : r(arr);
-        if (!c) continue;
-        if (!isRecent(userId, c)) {
-            // Final safety: if it's still time-inappropriate, fix it
-            if (__timeAware && __timeAware.isTimeInappropriate(c, period)) {
-                c = __timeAware.fixGreeting(c, period);
-            }
-            remember(userId, c);
-            return c;
-        }
+    // Filter to time-appropriate replies first
+    var valid = arr;
+    if (__timeAware) {
+        valid = arr.filter(function(r) {
+            return !__timeAware.isTimeInappropriate(r, period) && !__timeAware.isTimeMismatch(r, period);
+        });
+        if (!valid.length) valid = arr;
     }
 
-    // Fallback
-    var fallback = __timeAware ? __timeAware.pickTimeAppropriate(arr, period) : r(arr);
-    if (__timeAware && __timeAware.isTimeInappropriate(fallback, period)) {
-        fallback = __timeAware.fixGreeting(fallback, period);
+    // Exclude recently used
+    var fresh = valid.filter(function(r) { return !isRecent(userId, r); });
+
+    // If enough fresh ones, pick from those
+    var pick;
+    if (fresh.length > 0) {
+        pick = fresh[Math.floor(Math.random() * fresh.length)];
+    } else {
+        // All used — reset memory and pick a new one
+        recentByUser[userId] = [];
+        pick = valid[Math.floor(Math.random() * valid.length)];
     }
-    return fallback;
+
+    // Final safety: fix any time mismatch
+    if (__timeAware && __timeAware.isTimeInappropriate(pick, period)) {
+        pick = __timeAware.fixGreeting(pick, period);
+    }
+
+    remember(userId, pick);
+    return pick;
 }
 
 function normalize(text) {
