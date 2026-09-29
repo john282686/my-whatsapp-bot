@@ -186,7 +186,7 @@ var recentByUser = {};
 function remember(userId, text) {
     if (!recentByUser[userId]) recentByUser[userId] = [];
     recentByUser[userId].push(text);
-    if (recentByUser[userId].length > 8) recentByUser[userId].shift();
+    if (recentByUser[userId].length > 30) recentByUser[userId].shift();
 }
 function isRecent(userId, text) {
     return recentByUser[userId] && recentByUser[userId].indexOf(text) !== -1;
@@ -196,7 +196,7 @@ function pickFresh(userId, arr) {
     var period = __timeAware ? __timeAware.getPeriod() : null;
 
     // Try up to 10 times to find a fresh + time-appropriate reply
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 20; i++) {
         var c = __timeAware ? __timeAware.pickTimeAppropriate(arr, period) : r(arr);
         if (!c) continue;
         if (!isRecent(userId, c)) {
