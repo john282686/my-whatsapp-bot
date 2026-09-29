@@ -1,5 +1,44 @@
 var BI = [
 
+// ============ QA-BLOCK ============
+
+// Location
+{ p: /^\s*(where\s*(are|r)\s*(you|u)|where\s*you\s*dey|where\s*you\s*stay)\s*[?!.,]?\s*$/i,
+  en: ['I'm in Nigeria, you?', 'Lagos, you?', 'Nigeria 🇳🇬, you?', 'Where are you?'],
+  pg: ['Naija o, you nko?', 'Lagos jare, you?', 'I dey Naija, you nko?'] },
+
+// Age
+{ p: /^\s*(how\s*old\s*(are|r)\s*(you|u)|your\s*age|wetin\s*your\s*age)\s*[?!.,]?\s*$/i,
+  en: ['Old enough 😄', 'Why do you ask?', 'Guess 😏', 'I'm 24'],
+  pg: ['24 o', 'why you ask? 😏', 'guess now', 'age na number jare'] },
+
+// Name
+{ p: /^\s*(what\'?s?\s*your\s*name|who\s*are\s*you|wetin\s*be\s*your\s*name)\s*[?!.,]?\s*$/i,
+  en: ['Chidi', 'I'm Chidi, you?', 'Call me Chidi 😎', 'Chidi here'],
+  pg: ['Chidi na, you nko?', 'call me Chidi jare', 'Chidi o'] },
+
+// What's your job
+{ p: /^\s*(what\s*do\s*you\s*do|wetin\s*you\s*dey\s*do\s*for\s*living|your\s*work)\s*[?!.,]?\s*$/i,
+  en: ['Just hustling o', 'I do a bit of everything', 'Hustle is the job 😎', 'Business person o'],
+  pg: ['na hustle o', 'we dey hustle jare', 'side hustle o'] },
+
+// Are you married
+{ p: /^\s*(are\s*you\s*married|you\s*get\s*wife|you\s*get\s*husband)\s*[?!.,]?\s*$/i,
+  en: ['Why do you ask? 😏', 'Private business 😄', 'Not yet o'],
+  pg: ['why you ask? 😏', 'personal question o', 'no be your business 😂'] },
+
+// What's your favorite
+{ p: /^\s*(what\'?s?\s*your\s*fav(ourite)?|wetin\s*be\s*your\s*fav)\b/i,
+  en: ['Depends on the topic 😄', 'What's yours?', 'I like a lot of things'],
+  pg: ['depends na', 'you first', 'plenty things o'] },
+
+// Do you know X
+{ p: /^\s*(do\s*you\s*know|you\s*know)\s+\w+/i,
+  en: ['Which one?', 'Not sure, who?', 'Yeah I think so', 'Tell me more'],
+  pg: ['which one na?', 'who be that?', 'talk am'] },
+
+// END QA-BLOCK
+
 // ============ COMBINED GREETING + HOW ARE YOU (checked FIRST) ============
 { p: /^\s*(hi|hey|hello|yo|sup)\s*[,!.]?\s*(how\s*(are|r)\s*(you|u|things)|how you dey|how far|what'?s? up|wetin dey)/i,
   en: ["I'm good, how about you?", "Doing great! How are you?", "I'm fine, thanks! You?", "Pretty good! How about you?", "All good here, you?", "I'm well, thanks for asking"],
@@ -35,6 +74,17 @@ var BI = [
 { p: /^\s*(morning|evening|afternoon|night)\s+(o|na|jare|chief|sir)\b/i,
   en: ['Good morning ☀️','Morning!','Good evening 🌙','Hope you had a good day'],
   pg: ['Morning o ☀️','Morn don break 🌞','Evening o 🌆','Night o 🌙','Afternoon o'] },
+
+// ============ AM GOOD PATTERN ============
+{ p: /^\s*(am\s*good|i\s*(am|'m)\s*(good|fine|ok|okay|cool|great|alright))\s*[!.,]?\s*$/i,
+  en: ['Nice!', 'Good to hear 👍', 'Great!', 'Cool 😎', "That's good", 'Nice one!', 'Good stuff'],
+  pg: ['ehen na 👍', 'nice one', 'good o', 'ehen, we dey o', 'sweet'] },
+
+{ p: /^\s*(how are you doing|how you doing|how are you|how you dey)\s*[?!.,]?\s*$/i,
+  en: ["I'm good, how about you?", "Doing great! You?", "I'm well, thanks! You?", "Pretty good! How about you?", "All good here, you?", "Fine, thanks for asking! You?"],
+  pg: ['I dey o, u nko? 😎', 'I dey jare, you nko?', 'body dey, you?', 'I dey small o', 'we dey o, you nko?'] },
+
+// ============ END AM GOOD PATTERN ============
 
 // ============ HOW ARE YOU ============
 { p: /^\s*(how\s*(are\s*you|you dey|far|body)|how\s*una\s*dey|how you doing)/i,
