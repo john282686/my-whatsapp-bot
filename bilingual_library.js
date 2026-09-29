@@ -102,9 +102,9 @@ var BI = [
   pg: ["I dey house", "around o, you?", "inside o, you nko?", "my side jare", "Naija o, you nko?"] },
 
 // ============ AGE ============
-{ p: /^\s*(how\s*old\s*(are|r)\s*(you|u)|your\s*age)\s*[?!.,]?\s*$/i,
-  en: ["Old enough", "Why do you ask?", "Guess", "I am 24"],
-  pg: ["24 o", "why you ask? 😏", "guess now", "age na number jare"] },
+{ p: /^\s*(how\s*old\s*(are|r)\s*(you|u)|your\s*age|wetin\s*your\s*age)\s*[?!.,]?\s*$/i,
+  en: ["Why do you want to know? 😏", "Age no matter na", "Old enough 😄", "Personal question o", "Guess 😏", "You first"],
+  pg: ["age no matter na", "why you ask? 😏", "personal question o", "guess now", "you first"] },
 
 // ============ NAME ============
 { p: /^\s*(what\s*is\s*your\s*name|what.?s\s*your\s*name|who\s*are\s*you|wetin\s*be\s*your\s*name)\s*[?!.,]?\s*$/i,
